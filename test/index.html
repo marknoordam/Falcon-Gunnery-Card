@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Falcon Gunnery Card test</title>
+<!--
+  Runs the card outside Home Assistant with simulated planes and devices.
+  Serve the repo root (python -m http.server) and open http://localhost:8000/test/
+-->
+<style>
+html{--primary-color:#40e6d2;--primary-background-color:#01080b;--primary-text-color:#d4fdff;--secondary-text-color:#78b9c2;--error-color:#ff6f6f;--warning-color:#ffb02e;--success-color:#3dff8a;
+--ha-font-family-heading:"Michroma",sans-serif;--ha-font-family-body:"News Cycle",sans-serif;--aurebesh-font-family:"Aurebesh Rodian"}
+html.light{--primary-color:#25857a;--primary-background-color:#e3eef0;--primary-text-color:#062a30;--secondary-text-color:#44707a;--error-color:#c0392b;--warning-color:#a55f00;--success-color:#0a8a3c}
+body{margin:0;background:var(--primary-background-color) url("../dist/trench-dark.svg") center/cover fixed;color:var(--primary-text-color);font-family:"News Cycle",sans-serif}
+html.light body{background-image:url("../dist/trench-light.svg")}
+.bar{display:flex;gap:8px;align-items:center;padding:8px 12px;height:40px;box-sizing:border-box;border-bottom:2px solid var(--primary-color)}
+.bar button{font:inherit;background:none;color:var(--primary-text-color);border:1px solid var(--primary-color);padding:3px 10px;cursor:pointer}
+#log{font-size:12px;color:var(--secondary-text-color);margin-left:auto}
+</style>
+</head>
+<body>
+<div class="bar"><button id="mode">Light mode</button><button id="emg">Add emergency</button><button id="clear">Clear sky</button><span id="log"></span></div>
+<div id="host"></div>
+<script>
+// Stand-ins for Home Assistant's own elements so the card renders outside HA.
+customElements.define('ha-card', class extends HTMLElement { connectedCallback(){ this.style.display='block'; } });
+customElements.define('ha-state-icon', class extends HTMLElement {
+  set stateObj(s){ this._s=s; this.r(); } set hass(h){}
+  r(){ const d=(this._s?.entity_id||'').split('.')[0]; this.style.cssText='display:inline-block;width:16px;height:16px;border:1.5px solid currentColor;box-sizing:border-box;border-radius:'+(d==='light'?'50%':'0'); }
+});
+</script>
+<script type="module">
+import '../dist/falcon-gunnery-card.js';
+const HOME={lat:39.7392,lon:-104.9903};
+const now=()=>new Date().toISOString();
+const st=(id,state,attributes={})=>({entity_id:id,state:String(state),attributes:{friendly_name:attributes.friendly_name||id,...attributes},last_updated:now(),last_changed:now()});
+const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
+function project(lat,lon,brg,dist){const R=6371000,d=dist/R,b=toRad(brg),la1=toRad(lat),lo1=toRad(lon);const la2=Math.asin(Math.sin(la1)*Math.cos(d)+Math.cos(la1)*Math.sin(d)*Math.cos(b));const lo2=lo1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(la1),Math.cos(d)-Math.sin(la1)*Math.sin(la2));return[toDeg(la2),toDeg(lo2)];}
+const planes=[
+ {cs:'UAL1423',fn:'UA1423',icao:'A1B2C3',code:'B738',model:'Boeing 737-824',reg:'N76505',al:'United Airlines',o:'ORD',d:'SFO',alt:34000,kts:452,hdg:255,b:60,r:22000},
+ {cs:'SWA2281',fn:'WN2281',icao:'A2C3D4',code:'B38M',model:'Boeing 737 MAX 8',reg:'N8711Q',al:'Southwest Airlines',o:'DEN',d:'PHX',alt:12400,kts:310,hdg:205,b:20,r:9000},
+ {cs:'DAL882',fn:'DL882',icao:'A3D4E5',code:'A321',model:'Airbus A321-211',reg:'N350DN',al:'Delta Air Lines',o:'ATL',d:'SEA',alt:38000,kts:478,hdg:300,b:150,r:26000},
+ {cs:'N412RX',fn:'',icao:'A4E5F6',code:'C172',model:'Cessna 172S',reg:'N412RX',al:'',o:'',d:'',alt:3500,kts:105,hdg:120,b:280,r:6000},
+ {cs:'',fn:'',icao:'',code:'H145',model:'Airbus H145',reg:'BLOCKED',al:'',o:'',d:'',alt:1800,kts:120,hdg:40,b:220,r:12000},
+ {cs:'AAL19',fn:'AA19',icao:'A5F6A7',code:'B77W',model:'Boeing 777-323ER',reg:'N717AN',al:'American Airlines',o:'JFK',d:'LAX',alt:36000,kts:495,hdg:265,b:95,r:30000},
+];
+planes.forEach(p=>{[p.lat,p.lon]=project(HOME.lat,HOME.lon,p.b,p.r);});
+let emergency=false, clear=false;
+function flights(){ if(clear) return []; return planes.map(p=>({
+  aircraft_icao_24bit:p.icao||'N/A', callsign:p.cs||'N/A', flight_number:p.fn||'N/A', aircraft_code:p.code, aircraft_model:p.model,
+  aircraft_registration:p.reg, airline_short:p.al||'N/A', airport_origin_code_iata:p.o||'N/A', airport_destination_code_iata:p.d||'N/A',
+  latitude:p.lat, longitude:p.lon, altitude:p.alt, ground_speed:p.kts, heading:p.hdg,
+  squawk: emergency && p.cs==='SWA2281' ? '7700' : '1200', aircraft_photo_small:'' })); }
+const FR='sensor.flightradar24_current_in_area';
+const states={
+  [FR]:st(FR,planes.length,{flights:flights(),unit_of_measurement:'flights'}),
+  'sensor.outdoor_temperature':st('sensor.outdoor_temperature',64.2,{unit_of_measurement:'°F',device_class:'temperature'}),
+  'climate.living_room':st('climate.living_room','heat_cool',{current_temperature:71,temperature:70,min_temp:50,max_temp:90,hvac_action:'heating',friendly_name:'Living room'}),
+  'sensor.living_room_humidity':st('sensor.living_room_humidity',41,{unit_of_measurement:'%'}),
+  'sensor.energy_today':st('sensor.energy_today',18.74,{unit_of_measurement:'kWh'}),
+  'sensor.hvac_power':st('sensor.hvac_power',1620,{unit_of_measurement:'W'}),
+  'sensor.kitchen_power':st('sensor.kitchen_power',410,{unit_of_measurement:'W'}),
+  'sensor.office_power':st('sensor.office_power',290,{unit_of_measurement:'W'}),
+  'sensor.ev_power':st('sensor.ev_power',0,{unit_of_measurement:'W'}),
+  'sensor.laundry_power':st('sensor.laundry_power',95,{unit_of_measurement:'W'}),
+  'weather.home':st('weather.home','partlycloudy',{temperature:64,humidity:38,wind_speed:9,wind_speed_unit:'mph',friendly_name:'Home',forecast:[{temperature:68,templow:52}]}),
+  'light.living_room':st('light.living_room','on',{friendly_name:'Living room'}),
+  'light.kitchen':st('light.kitchen','off',{friendly_name:'Kitchen'}),
+  'light.garage':st('light.garage','on',{friendly_name:'Hangar bay'}),
+  'lock.front_door':st('lock.front_door','locked',{friendly_name:'Blast door'}),
+  'alarm_control_panel.home':st('alarm_control_panel.home','armed_home',{friendly_name:'Alarm'}),
+  'cover.garage_door':st('cover.garage_door','closed',{friendly_name:'Garage'}),
+};
+const log=m=>document.getElementById('log').textContent=m;
+const hass={states,config:{latitude:HOME.lat,longitude:HOME.lon,unit_system:{temperature:'°F'}},
+  callService:(d,s,data)=>{const id=data.entity_id; const o=states[id]; states[id]={...o,state:o.state==='on'?'off':'on',last_updated:now()}; push(); log(`${d}.${s} ${id}`);}};
+const card=document.createElement('nav-console-card');
+card.setConfig({
+  height_offset: 44,
+  radar:{entity:FR,radius:20,distance_unit:'mi',sound_alerts:'all',trail_length:7},
+  left:{outside_temp:'sensor.outdoor_temperature',thermostat:'climate.living_room',humidity:'sensor.living_room_humidity',energy_today:'sensor.energy_today',
+    meter:[{name:'HVAC',entity:'sensor.hvac_power'},{name:'Kitchen',entity:'sensor.kitchen_power'},{name:'Office',entity:'sensor.office_power'},{name:'EV',entity:'sensor.ev_power'},{name:'Laundry',entity:'sensor.laundry_power'}]},
+  right:{weather:'weather.home',status:['light.living_room','light.kitchen','light.garage','lock.front_door','alarm_control_panel.home','cover.garage_door']},
+});
+document.getElementById('host').appendChild(card);
+function push(){ card.hass={...hass,states:{...states}}; }
+push();
+addEventListener('hass-more-info',e=>log('more-info: '+e.detail.entityId));
+// FR24 updates every 10 s; planes move between updates and the card dead-reckons the gaps
+setInterval(()=>{
+  planes.forEach(p=>{[p.lat,p.lon]=project(p.lat,p.lon,p.hdg,p.kts*0.514444*10);
+    const d=Math.hypot(p.lat-HOME.lat,(p.lon-HOME.lon)*Math.cos(toRad(HOME.lat)))*111000;
+    if(d>33000){p.hdg=(p.hdg+180)%360;}});
+  states[FR]=st(FR,clear?0:planes.length,{flights:flights()});
+  push();
+},10000);
+const refresh=()=>{states[FR]=st(FR,clear?0:planes.length,{flights:flights()});push();};
+document.getElementById('mode').onclick=e=>{const l=document.documentElement.classList.toggle('light');e.target.textContent=l?'Dark mode':'Light mode';push();};
+document.getElementById('emg').onclick=()=>{emergency=!emergency;refresh();};
+document.getElementById('clear').onclick=()=>{clear=!clear;refresh();};
+</script>
+</body>
+</html>
