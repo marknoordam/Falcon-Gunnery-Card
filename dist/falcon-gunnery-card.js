@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.5.1
+ * Falcon Gunnery Card (nav-console-card) v0.6.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.5.1';
+const VERSION = '0.6.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -120,6 +120,16 @@ function project(lat, lon, brg, dist) {
   const la2 = Math.asin(Math.sin(la1) * Math.cos(d) + Math.cos(la1) * Math.sin(d) * Math.cos(b));
   const lo2 = lo1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la1), Math.cos(d) - Math.sin(la1) * Math.sin(la2));
   return [toDeg(la2), toDeg(lo2)];
+}
+
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const compass = (deg) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+
+// Angle above the horizon to an aircraft, allowing for the Earth's curve (with the usual
+// 4/3 radius for atmospheric refraction).
+function elevationAngle(groundM, altFt, homeElevM) {
+  const drop = (groundM * groundM) / (2 * 6371000 * (4 / 3));
+  return toDeg(Math.atan2(altFt * 0.3048 - homeElevM - drop, Math.max(1, groundM)));
 }
 
 // Web Mercator world pixel coordinates at zoom 0 (256px world).
@@ -240,10 +250,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .snd.show { display: block; }
 .snd.armed { color: var(--acc); box-shadow: 0 0 6px var(--acc); }
 .snd svg { width: 100%; height: 100%; fill: currentColor; }
-.ro { left: 0; right: 0; bottom: 0; height: 74px; box-sizing: border-box; padding: 10px 12px; border-top: 2px solid var(--acc); background: rgba(0, 0, 0, .75); }
+.ro { left: 0; right: 0; bottom: 0; height: 112px; box-sizing: border-box; padding: 10px 12px; border-top: 2px solid var(--acc); background: rgba(0, 0, 0, .75); }
 .ro .k { font-family: var(--mono); font-size: 10px; color: var(--amb); }
 .ro .l1 { font-family: var(--mono); font-size: 16px; color: var(--txt); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .04em; }
-.ro .l2 { font-family: var(--mono); font-size: 11px; color: var(--txt2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
+.ro .l2 { font-family: var(--mono); font-size: 12px; color: var(--txt2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ro .l2 b { color: var(--txt); font-weight: 400; }
 .ro .ab { position: absolute; right: 12px; bottom: 10px; }
 .ro.em .k, .ro.em .l1 { color: var(--red); }
 `;
@@ -485,7 +496,7 @@ class NavConsoleCard extends HTMLElement {
   _geom() {
     const r = this._config.radar;
     const home = this._home();
-    const roH = 74 * this._k();
+    const roH = 112 * this._k();
     this._cx = this._w / 2;
     this._cy = (this._h - roH) / 2 + 4;
     this._R = Math.max(40, Math.min(this._w, this._h - roH) / 2 - 16);
@@ -930,8 +941,10 @@ class NavConsoleCard extends HTMLElement {
       ac.code = field(f.aircraft_code);
       ac.reg = reg;
       ac.airline = field(f.airline_short) || field(f.airline_icao);
-      ac.from = field(f.airport_origin_code_iata);
-      ac.to = field(f.airport_destination_code_iata);
+      ac.from = field(f.airport_origin_code_iata) || field(f.airport_origin_code_icao);
+      ac.to = field(f.airport_destination_code_iata) || field(f.airport_destination_code_icao);
+      ac.fromName = field(f.airport_origin_city) || field(f.airport_origin_name);
+      ac.toName = field(f.airport_destination_city) || field(f.airport_destination_name);
       ac.squawk = field(f.squawk);
       const wasEm = ac.emergency;
       ac.emergency = EMERGENCY_SQUAWKS.includes(ac.squawk);
@@ -1218,13 +1231,27 @@ class NavConsoleCard extends HTMLElement {
       key = 'none';
       html = '<div class="k">TRACKING</div><div class="l1">NO CONTACT</div><div class="l2">Tap a blip or a contact to track it</div><span class="ab">standing by</span>';
     } else {
-      const route = ac.from || ac.to ? `${ac.from || '???'} > ${ac.to || '???'}` : '';
-      const l1 = [ac.callsign, ac.code || ac.model, route].filter(Boolean).join('  ');
-      const l2 = [this._altText(ac.alt) + (ac.trend || ''), this._spdText(ac.kts), `HDG ${String(Math.round(ac.hdg)).padStart(3, '0')}`, this._distText(ac.dist), ac.squawk ? `SQK ${ac.squawk}` : '']
-        .filter(Boolean).join(' · ');
-      const tag = ac.emergency ? 'emergency' : ac.alt < Number(this._config.radar.low_altitude) ? 'low flyer' : 'cruising';
-      key = `${l1}|${l2}|${ac.emergency}|${ac.lost}`;
-      html = `<div class="k">${ac.emergency ? 'EMERGENCY' : ac.lost ? 'SIGNAL LOST' : 'TRACKING'}</div><div class="l1">${esc(l1)}</div><div class="l2">${esc(l2)}</div><span class="ab">${tag}</span>`;
+      const r = this._config.radar;
+      const home = this._home();
+      const [lat, lon] = this._pos(ac, performance.now());
+      const brg = bearing(home.lat, home.lon, lat, lon);
+      const elev = elevationAngle(ac.dist, ac.alt, Number(this._hass?.config?.elevation) || 0);
+      const look = `Look <b>${compass(brg)} (${String(Math.round(brg)).padStart(3, '0')}°)</b>, about <b>${Math.max(0, Math.round(elev))}° up</b> · ${esc(this._distText(ac.dist).toLowerCase())} away`;
+      const place = (name, code) => (name && code ? `${esc(name)} (${esc(code)})` : esc(name || code));
+      const route = ac.from || ac.to || ac.fromName || ac.toName
+        ? `From <b>${place(ac.fromName, ac.from) || 'unknown'}</b> to <b>${place(ac.toName, ac.to) || 'unknown'}</b>` : '';
+      const ft = Math.round(ac.alt);
+      const m = Math.round(ac.alt * 0.3048);
+      const altTxt = r.altitude_unit === 'm' ? `${m.toLocaleString()} m (${ft.toLocaleString()} ft)` : `${ft.toLocaleString()} ft (${m.toLocaleString()} m)`;
+      const kmh = Math.round(ac.kts * 1.852);
+      const spdTxt = r.speed_unit === 'kmh' ? `${kmh} km/h (${Math.round(ac.kts)} kt)` : `${Math.round(ac.kts)} kt (${kmh} km/h)`;
+      const motion = `Heading <b>${compass(ac.hdg)}</b> · ${altTxt}${ac.trend === '▲' ? ' climbing' : ac.trend === '▼' ? ' descending' : ''} · ${spdTxt}`;
+      const tag = ac.emergency ? 'emergency' : ac.alt < Number(r.low_altitude) ? 'low flyer' : 'cruising';
+      const head = [ac.emergency ? 'EMERGENCY' : ac.lost ? 'SIGNAL LOST' : 'TRACKING', ac.callsign, ac.squawk ? `SQK ${ac.squawk}` : '']
+        .filter(Boolean).map(esc).join(' · ');
+      html = `<div class="k">${head}</div><div class="l1">${esc(ac.model || ac.code || ac.callsign)}${ac.airline ? ` <span style="color:var(--txt2);font-size:12px">${esc(ac.airline)}</span>` : ''}</div>
+        <div class="l2">${look}</div>${route ? `<div class="l2">${route}</div>` : ''}<div class="l2">${motion}</div><span class="ab">${tag}</span>`;
+      key = html;
     }
     if (key === this._roKey) return;
     this._roKey = key;

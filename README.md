@@ -79,7 +79,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 |---|---|
 | Show the flight list | Tap **Aircraft** (first row on the right), or the plane tab on the right panel's edge |
 | Go back to home status | Tap **Home status** at the top of the flight list, or the shield tab |
-| Track a plane | Tap its blip on the radar, or its row in the flight list. An amber circle locks on and the readout under the radar shows its details |
+| Track a plane | Tap its blip on the radar, or its row in the flight list. An amber circle locks on, and the readout under the radar shows the aircraft model, where to look in the sky (compass direction and how high up), its route by city and airport code, and its heading, altitude and speed |
 | Turn the map lines on or off | Tap the map tab on the left panel's edge |
 | Toggle a light | Tap its row. Locks, the alarm and the garage door open their detail popup instead, so one tap can't unlock anything |
 

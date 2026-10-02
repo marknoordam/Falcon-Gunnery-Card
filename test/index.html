@@ -48,15 +48,16 @@ const planes=[
  {cs:'UAL1423',fn:'UA1423',icao:'A1B2C3',code:'B738',model:'Boeing 737-824',reg:'N76505',al:'United Airlines',o:'ORD',d:'SFO',alt:34000,kts:452,hdg:255,b:60,r:22000},
  {cs:'SWA2281',fn:'WN2281',icao:'A2C3D4',code:'B38M',model:'Boeing 737 MAX 8',reg:'N8711Q',al:'Southwest Airlines',o:'DEN',d:'PHX',alt:12400,kts:310,hdg:205,b:20,r:9000},
  {cs:'DAL882',fn:'DL882',icao:'A3D4E5',code:'A321',model:'Airbus A321-211',reg:'N350DN',al:'Delta Air Lines',o:'ATL',d:'SEA',alt:38000,kts:478,hdg:300,b:150,r:26000},
- {cs:'N412RX',fn:'',icao:'A4E5F6',code:'C172',model:'Cessna 172S',reg:'N412RX',al:'',o:'',d:'',alt:3500,kts:105,hdg:120,b:280,r:6000},
+ {cs:'N412RX',fn:'',icao:'A4E5F6',code:'C208',model:'Cessna 208B Grand Caravan',reg:'N412RX',al:'',o:'APA',d:'BJC',alt:7200,kts:136,hdg:292,b:280,r:6000},
  {cs:'',fn:'',icao:'',code:'H145',model:'Airbus H145',reg:'BLOCKED',al:'',o:'',d:'',alt:1800,kts:120,hdg:40,b:220,r:12000},
  {cs:'AAL19',fn:'AA19',icao:'A5F6A7',code:'B77W',model:'Boeing 777-323ER',reg:'N717AN',al:'American Airlines',o:'JFK',d:'LAX',alt:36000,kts:495,hdg:265,b:95,r:30000},
 ];
 planes.forEach(p=>{[p.lat,p.lon]=project(HOME.lat,HOME.lon,p.b,p.r);});
 let emergency=false, clear=false;
+const CITY={APA:'Centennial',BJC:'Broomfield',ORD:'Chicago',SFO:'San Francisco',DEN:'Denver',PHX:'Phoenix',ATL:'Atlanta',SEA:'Seattle',JFK:'New York',LAX:'Los Angeles'};
 function flights(){ if(clear) return []; return planes.map(p=>({
   aircraft_icao_24bit:p.icao||'N/A', callsign:p.cs||'N/A', flight_number:p.fn||'N/A', aircraft_code:p.code, aircraft_model:p.model,
-  aircraft_registration:p.reg, airline_short:p.al||'N/A', airport_origin_code_iata:p.o||'N/A', airport_destination_code_iata:p.d||'N/A',
+  aircraft_registration:p.reg, airline_short:p.al||'N/A', airport_origin_code_iata:p.o||'N/A', airport_destination_code_iata:p.d||'N/A', airport_origin_city:CITY[p.o]||'N/A', airport_destination_city:CITY[p.d]||'N/A',
   latitude:p.lat, longitude:p.lon, altitude:p.alt, ground_speed:p.kts, heading:p.hdg,
   squawk: emergency && p.cs==='SWA2281' ? '7700' : '1200', aircraft_photo_small:'' })); }
 const FR='sensor.flightradar24_current_in_area';
@@ -80,7 +81,7 @@ const states={
   'cover.garage_door':st('cover.garage_door','closed',{friendly_name:'Garage'}),
 };
 const log=m=>document.getElementById('log').textContent=m;
-const hass={states,config:{latitude:HOME.lat,longitude:HOME.lon,unit_system:{temperature:'°F'}},
+const hass={states,config:{latitude:HOME.lat,longitude:HOME.lon,elevation:1609,unit_system:{temperature:'°F'}},
   callService:(d,s,data)=>{const id=data.entity_id; const o=states[id]; states[id]={...o,state:o.state==='on'?'off':'on',last_updated:now()}; push(); log(`${d}.${s} ${id}`);}};
 const card=document.createElement('nav-console-card');
 card.setConfig({
