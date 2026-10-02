@@ -69,6 +69,20 @@ To use a camera card you already have, open it in the dashboard editor → **Sho
 
 Leave out anything you don't have, and that part of the panel disappears.
 
+### 4. Daily count of nearby planes (optional)
+
+The console can show how many different planes came within 10 km of your home today, resetting at midnight. The counting runs in Home Assistant, so it keeps counting while no dashboard is open and every screen shows the same number.
+
+1. Copy [`examples/planes-today.yaml`](examples/planes-today.yaml) into Home Assistant. The file explains two ways: as a package file (recommended), or pasted into `configuration.yaml`.
+2. **Developer tools → YAML → Check configuration**, then restart Home Assistant.
+3. Add the new sensor to the card:
+   ```yaml
+   radar:
+     today_count: sensor.planes_within_10_km_today
+   ```
+
+The radar then shows an amber **TODAY** counter under the aircraft count, and a dashed amber ring marks the 10 km zone. The Aircraft row reads, for example, "6 now · 42 today". To use a different distance, change `radius_km` in both places in the YAML file, and set `today_radius_km` on the card to match.
+
 ## Updating
 
 When a new version is published, it shows up in **Settings → Updates**. Click **Update**, then refresh the browser.
@@ -134,6 +148,8 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `altitude_unit` | `ft` | `ft` or `m` |
 | `show_details` | `true` | Airline, model, registration and route in the flight list |
 | `show_photo` | `true` | Photo of the selected aircraft at the top of the flight list |
+| `today_count` | none | The daily count sensor from [`examples/planes-today.yaml`](examples/planes-today.yaml). Shows the TODAY counter and the zone ring |
+| `today_radius_km` | `10` | Size of the zone ring, in km. Match the sensor's `radius_km` |
 
 ### `left:`
 | Option | What it shows |

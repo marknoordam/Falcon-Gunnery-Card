@@ -1,0 +1,79 @@
+# Planes within 10 km today
+#
+# A Home Assistant sensor that counts the unique aircraft that came within 10 km of your
+# home today, from the FlightRadar24 integration. It resets at midnight and survives restarts.
+# Show it on the nav console with:   radar: { today_count: sensor.planes_within_10_km_today }
+#
+# Install it as a package (keeps it in its own file):
+#   1. In configuration.yaml, under `homeassistant:`, add:   packages: !include_dir_named packages
+#   2. Save this file as /config/packages/planes_today.yaml
+#   3. Developer tools > YAML > Check configuration, then restart Home Assistant
+#
+# Or paste everything from `template:` down into configuration.yaml (merge it into an
+# existing `template:` section if you already have one).
+#
+# To change the distance, edit radius_km in BOTH templates below and set the card's
+# radar.today_radius_km to match. The state and the list use the same counting code.
+
+template:
+  - trigger:
+      - platform: state
+        entity_id: sensor.flightradar24_current_in_area
+        attribute: flights
+      - platform: time
+        at: "00:00:00"
+      - platform: homeassistant
+        event: start
+    sensor:
+      - name: Planes within 10 km today
+        unique_id: falcon_gunnery_planes_within_10_km_today
+        icon: mdi:airplane-marker
+        state_class: total
+        unit_of_measurement: planes
+        state: >
+          {% set radius_km = 10 %}
+          {% set today = now().date() | string %}
+          {% set ns = namespace(ids=(this.attributes.ids | default([])) if this.attributes.get('date') == today else []) %}
+          {% set lat0 = state_attr('zone.home', 'latitude') | float(0) %}
+          {% set lon0 = state_attr('zone.home', 'longitude') | float(0) %}
+          {% for f in state_attr('sensor.flightradar24_current_in_area', 'flights') or [] %}
+            {% set la = f.latitude | float(none) %}
+            {% set lo = f.longitude | float(none) %}
+            {% if la is not none and lo is not none %}
+              {% set dlat = (la - lat0) * pi / 180 %}
+              {% set dlon = (lo - lon0) * pi / 180 %}
+              {% set a = sin(dlat / 2) ** 2 + cos(lat0 * pi / 180) * cos(la * pi / 180) * sin(dlon / 2) ** 2 %}
+              {% set km = 12742 * asin(sqrt(a)) %}
+              {% set id = [f.aircraft_icao_24bit, f.callsign, f.aircraft_registration, f.flight_number]
+                 | map('string') | reject('in', ['N/A', 'BLOCKED', 'Blocked', 'None', '']) | first | default('') %}
+              {% if km <= radius_km and id and id not in ns.ids %}
+                {% set ns.ids = ns.ids + [id] %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {{ ns.ids | count }}
+        attributes:
+          date: "{{ now().date() | string }}"
+          radius_km: "{{ 10 }}"
+          ids: >
+            {% set radius_km = 10 %}
+            {% set today = now().date() | string %}
+            {% set ns = namespace(ids=(this.attributes.ids | default([])) if this.attributes.get('date') == today else []) %}
+            {% set lat0 = state_attr('zone.home', 'latitude') | float(0) %}
+            {% set lon0 = state_attr('zone.home', 'longitude') | float(0) %}
+            {% for f in state_attr('sensor.flightradar24_current_in_area', 'flights') or [] %}
+              {% set la = f.latitude | float(none) %}
+              {% set lo = f.longitude | float(none) %}
+              {% if la is not none and lo is not none %}
+                {% set dlat = (la - lat0) * pi / 180 %}
+                {% set dlon = (lo - lon0) * pi / 180 %}
+                {% set a = sin(dlat / 2) ** 2 + cos(lat0 * pi / 180) * cos(la * pi / 180) * sin(dlon / 2) ** 2 %}
+                {% set km = 12742 * asin(sqrt(a)) %}
+                {% set id = [f.aircraft_icao_24bit, f.callsign, f.aircraft_registration, f.flight_number]
+                   | map('string') | reject('in', ['N/A', 'BLOCKED', 'Blocked', 'None', '']) | first | default('') %}
+                {% if km <= radius_km and id and id not in ns.ids %}
+                  {% set ns.ids = ns.ids + [id] %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.ids }}

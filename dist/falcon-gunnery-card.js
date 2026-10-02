@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.6.1
+ * Falcon Gunnery Card (nav-console-card) v0.7.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.6.1';
+const VERSION = '0.7.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -60,6 +60,8 @@ const DEFAULTS = {
     altitude_unit: 'ft',
     show_details: true,
     show_photo: true,
+    today_count: null,
+    today_radius_km: 10,
   },
 };
 
@@ -245,18 +247,23 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .cnt { top: 10px; right: 12px; border: 2px solid var(--acc); border-radius: 3px; padding: 1px 9px; font-family: var(--mono); font-size: 15px; letter-spacing: .2em; color: var(--acc); text-shadow: 0 0 5px var(--acc); }
 .ttl { top: 10px; left: 12px; font-size: 12px; font-weight: 700; letter-spacing: .2em; color: var(--txt2); }
 .ttl .ab { display: block; margin-top: 3px; }
-.stale { top: 40px; right: 12px; font-family: var(--mono); font-size: 11px; color: var(--red); display: none; }
+.stale { top: 40px; right: 12px; margin-top: var(--stale-off, 0px); font-family: var(--mono); font-size: 11px; color: var(--red); display: none; }
 .stale.show { display: block; }
 .snd { pointer-events: auto; top: 48px; left: 12px; width: 28px; height: 28px; border: 1.5px solid var(--acc); background: transparent; color: var(--txt2); cursor: pointer; padding: 4px; display: none; }
 .snd.show { display: block; }
 .snd.armed { color: var(--acc); box-shadow: 0 0 6px var(--acc); }
 .snd svg { width: 100%; height: 100%; fill: currentColor; }
-.ro { left: 0; right: 0; bottom: 0; height: 112px; box-sizing: border-box; padding: 10px 12px; border-top: 2px solid var(--acc); background: rgba(0, 0, 0, .75); }
+.ro { left: 0; right: 0; bottom: 0; min-height: 108px; box-sizing: border-box; padding: 10px 12px; border-top: 2px solid var(--acc); background: rgba(0, 0, 0, .75); }
 .ro .k { font-family: var(--mono); font-size: 10px; color: var(--amb); }
-.ro .l1 { font-family: var(--mono); font-size: 16px; color: var(--txt); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .04em; }
-.ro .l2 { font-family: var(--mono); font-size: 12px; color: var(--txt2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ro .l1 { font-family: var(--mono); font-size: 16px; color: var(--txt); margin-top: 3px; letter-spacing: .04em; overflow-wrap: anywhere; }
+.ro .l2 { font-family: var(--mono); font-size: 12px; color: var(--txt2); margin-top: 3px; line-height: 1.35; overflow-wrap: anywhere; }
 .ro .l2 b { color: var(--txt); font-weight: 400; }
-.ro .ab { position: absolute; right: 12px; bottom: 10px; }
+.ro .k { display: flex; justify-content: space-between; gap: 8px; }
+.ro .k .ab { font-size: calc(9px * var(--nv-ab, 1)); }
+.today { top: 40px; right: 12px; text-align: right; font-family: var(--mono); color: var(--amb); display: none; }
+.today.show { display: block; }
+.today b { display: inline-block; border: 2px solid var(--amb); border-radius: 3px; padding: 1px 9px; font-size: 15px; font-weight: 400; letter-spacing: .2em; text-shadow: 0 0 5px var(--amb); }
+.today span { display: block; font-size: 10px; margin-top: 3px; letter-spacing: .08em; }
 .ro.em .k, .ro.em .l1 { color: var(--red); }
 `;
 
@@ -322,12 +329,14 @@ class NavConsoleCard extends HTMLElement {
     if (this._config && !this._built) this._build();
     this._ro = new ResizeObserver(() => this._resize());
     this._ro.observe(this);
+    if (this._roObs && this._el) this._roObs.observe(this._el.ro);
     this._startLoop();
     this._subscribeForecast();
   }
 
   disconnectedCallback() {
     if (this._ro) this._ro.disconnect();
+    if (this._roObs) this._roObs.disconnect();
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
     this._unsubscribeForecast();
@@ -376,6 +385,7 @@ class NavConsoleCard extends HTMLElement {
             <canvas class="cv-live"></canvas>
             <div class="ovl ttl">AIRSPACE<span class="ab">airspace scan</span></div>
             <div class="ovl cnt">0000</div>
+            <div class="ovl today"><b>0000</b><span>TODAY ≤ 10 KM</span></div>
             <div class="ovl stale">STALE</div>
             <button class="ovl snd ${r.sound_alerts !== 'none' ? 'show' : ''} ${this._armed ? 'armed' : ''}" aria-label="Sound alerts">${this._armed ? ICON.speakerOn : ICON.speakerOff}</button>
             <div class="ovl ro"></div>
@@ -392,8 +402,18 @@ class NavConsoleCard extends HTMLElement {
     this._el = {
       nv: $('.nv'), left: $('.lslots'), center: $('.center'), cvS: $('.cv-static'), cvL: $('.cv-live'),
       cnt: $('.cnt'), stale: $('.stale'), snd: $('.snd'), ro: $('.ro'), rt: $('.rt'), rta: $('.rta'), rbody: $('.rbody'),
-      tabView: $('.tab-view'), right: $('.right'), rcards: $('.rcards'),
+      tabView: $('.tab-view'), right: $('.right'), rcards: $('.rcards'), today: $('.today'),
     };
+    // the readout grows when long lines wrap; keep the radar clear of it
+    this._roObs = new ResizeObserver(() => {
+      const h = this._el.ro.getBoundingClientRect().height;
+      if (Math.abs(h - (this._roH || 0)) < 1) return;
+      this._roH = h;
+      this._geom();
+      this._staticKey = '';
+      this._drawStatic();
+    });
+    this._roObs.observe(this._el.ro);
     this._childCards = [];
     this._buildChildCards();
     this._ctxS = this._el.cvS.getContext('2d');
@@ -498,7 +518,7 @@ class NavConsoleCard extends HTMLElement {
   _geom() {
     const r = this._config.radar;
     const home = this._home();
-    const roH = 112 * this._k();
+    const roH = this._roH || 108 * this._k();
     this._cx = this._w / 2;
     this._cy = (this._h - roH) / 2 + 4;
     this._R = Math.max(40, Math.min(this._w, this._h - roH) / 2 - 16);
@@ -519,6 +539,20 @@ class NavConsoleCard extends HTMLElement {
 
   // Size multiplier for text, gauges and markers (config `scale`, 0.75 to 2).
   _k() { return Math.max(0.75, Math.min(2, Number(this._config?.scale) || 1)); }
+
+  // Planes seen within today_radius_km today, from the Home Assistant sensor (see README).
+  _todayCount() {
+    const id = this._config?.radar?.today_count;
+    const st = id && this._hass ? this._hass.states[id] : null;
+    if (!st) return null;
+    const v = parseInt(st.state, 10);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  _todayRadiusText() {
+    const km = Number(this._config.radar.today_radius_km) || 10;
+    return this._config.radar.distance_unit === 'mi' ? `${(km / 1.609344).toFixed(1)} MI` : `${km} KM`;
+  }
 
   _home() {
     const r = this._config?.radar || {};
@@ -611,6 +645,25 @@ class NavConsoleCard extends HTMLElement {
       ctx.fillText(`${Number.isInteger(v) ? v : v.toFixed(1)} ${unit}`, cx + 4 * k, cy - rr - 4 * k);
     }
     ctx.restore();
+
+    // counting zone for the daily total
+    if (r.today_count) {
+      const rz = (Number(r.today_radius_km) || 10) * 1000 / this._radiusM * R;
+      if (rz > 4 && rz < R * 1.2) {
+        ctx.save();
+        ctx.strokeStyle = c.amb;
+        ctx.fillStyle = c.amb;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6 * k, 6 * k]);
+        ctx.beginPath(); ctx.arc(cx, cy, rz, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = `${9 * k}px ${c.mono}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(`TODAY ZONE ${this._todayRadiusText()}`, cx - 4 * k, cy + rz + 12 * k);
+        ctx.restore();
+      }
+    }
 
     // home marker
     ctx.save();
@@ -862,7 +915,7 @@ class NavConsoleCard extends HTMLElement {
     let rows = '';
     if (this._config.radar.entity) {
       rows += `<div class="st on" data-view="contacts" role="button" tabindex="0" title="Show the flight list">
-        <span class="n"><span class="ic">${ICON.plane}</span>Aircraft</span><span class="v">${n} in range</span></div>`;
+        <span class="n"><span class="ic">${ICON.plane}</span>Aircraft</span><span class="v">${n} now${this._todayCount() != null ? ` · ${this._todayCount()} today` : ''}</span></div>`;
     }
     rows += this._rowsHtml(items);
     html += `<div class="list">${rows}</div>`;
@@ -1218,6 +1271,16 @@ class NavConsoleCard extends HTMLElement {
       this._el.cnt.textContent = cnt;
       if (this._view === 'status') { this._rightHtml = ''; this._renderRight(); }
     }
+    const today = this._todayCount();
+    this._el.today.classList.toggle('show', today != null);
+    this._el.stale.style.setProperty('--stale-off', today != null ? '44px' : '0px');
+    if (today != null) {
+      const t = String(today).padStart(4, '0');
+      const b = this._el.today.firstElementChild;
+      if (b.textContent !== t) b.textContent = t;
+      const lbl = `TODAY ≤ ${this._todayRadiusText()}`;
+      if (this._el.today.lastElementChild.textContent !== lbl) this._el.today.lastElementChild.textContent = lbl;
+    }
     const staleAfter = Number(r.stale_after);
     const stale = staleAfter > 0 && n > 0 && this._lastUpdate && (Date.now() - this._lastUpdate) / 1000 > staleAfter;
     this._el.stale.classList.toggle('show', !!stale);
@@ -1231,7 +1294,7 @@ class NavConsoleCard extends HTMLElement {
     let html;
     if (!ac) {
       key = 'none';
-      html = '<div class="k">TRACKING</div><div class="l1">NO CONTACT</div><div class="l2">Tap a blip or a contact to track it</div><span class="ab">standing by</span>';
+      html = '<div class="k"><span>TRACKING</span><span class="ab">standing by</span></div><div class="l1">NO CONTACT</div><div class="l2">Tap a blip or a contact to track it</div>';
     } else {
       const r = this._config.radar;
       const home = this._home();
@@ -1251,8 +1314,8 @@ class NavConsoleCard extends HTMLElement {
       const tag = ac.emergency ? 'emergency' : ac.alt < Number(r.low_altitude) ? 'low flyer' : 'cruising';
       const head = [ac.emergency ? 'EMERGENCY' : ac.lost ? 'SIGNAL LOST' : 'TRACKING', ac.callsign, ac.squawk ? `SQK ${ac.squawk}` : '']
         .filter(Boolean).map(esc).join(' · ');
-      html = `<div class="k">${head}</div><div class="l1">${esc(ac.model || ac.code || ac.callsign)}${ac.airline ? ` <span style="color:var(--txt2);font-size:12px">${esc(ac.airline)}</span>` : ''}</div>
-        <div class="l2">${look}</div>${route ? `<div class="l2">${route}</div>` : ''}<div class="l2">${motion}</div><span class="ab">${tag}</span>`;
+      html = `<div class="k"><span>${head}</span><span class="ab">${tag}</span></div><div class="l1">${esc(ac.model || ac.code || ac.callsign)}${ac.airline ? ` <span style="color:var(--txt2);font-size:12px">${esc(ac.airline)}</span>` : ''}</div>
+        <div class="l2">${look}</div>${route ? `<div class="l2">${route}</div>` : ''}<div class="l2">${motion}</div>`;
       key = html;
     }
     if (key === this._roKey) return;

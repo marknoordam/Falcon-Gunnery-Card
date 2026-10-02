@@ -72,6 +72,7 @@ const states={
   'sensor.office_power':st('sensor.office_power',290,{unit_of_measurement:'W'}),
   'sensor.ev_power':st('sensor.ev_power',0,{unit_of_measurement:'W'}),
   'sensor.laundry_power':st('sensor.laundry_power',95,{unit_of_measurement:'W'}),
+  'sensor.planes_within_10_km_today':st('sensor.planes_within_10_km_today',42,{unit_of_measurement:'planes'}),
   'weather.home':st('weather.home','partlycloudy',{temperature:64,humidity:38,wind_speed:9,wind_speed_unit:'mph',friendly_name:'Home',forecast:[{temperature:68,templow:52}]}),
   'light.living_room':st('light.living_room','on',{friendly_name:'Living room'}),
   'light.kitchen':st('light.kitchen','off',{friendly_name:'Kitchen'}),
@@ -86,7 +87,7 @@ const hass={states,config:{latitude:HOME.lat,longitude:HOME.lon,elevation:1609,u
 const card=document.createElement('nav-console-card');
 card.setConfig({
   height_offset: 44,
-  radar:{entity:FR,radius:20,distance_unit:'mi',sound_alerts:'all',trail_length:7},
+  radar:{entity:FR,radius:20,distance_unit:'mi',today_count:'sensor.planes_within_10_km_today',sound_alerts:'all',trail_length:7},
   left:{lights:['light.living_room','light.kitchen','light.garage'],outside_temp:'sensor.outdoor_temperature',thermostat:'climate.living_room',humidity:'sensor.living_room_humidity',energy_today:'sensor.energy_today',
     meter:[{name:'HVAC',entity:'sensor.hvac_power'},{name:'Kitchen',entity:'sensor.kitchen_power'},{name:'Office',entity:'sensor.office_power'},{name:'EV',entity:'sensor.ev_power'},{name:'Laundry',entity:'sensor.laundry_power'}]},
   right:{weather:'weather.home',status:['lock.front_door','alarm_control_panel.home','cover.garage_door'],
