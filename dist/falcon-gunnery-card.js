@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.7.0
+ * Falcon Gunnery Card (nav-console-card) v0.8.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -198,6 +198,16 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 .rcards { display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 60%; overflow-y: auto; scrollbar-width: none; }
 .rcards:empty, .contacts .rcards { display: none; }
 .lights { display: flex; flex-direction: column; }
+.ap { border: 1.5px solid var(--acc); padding: 6px 7px; cursor: pointer; }
+.ap .h { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.pill { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border: 1px solid currentColor; color: var(--txt2); white-space: nowrap; }
+.pill.on { color: var(--acc); text-shadow: 0 0 5px var(--acc); box-shadow: 0 0 5px color-mix(in srgb, var(--acc) 50%, transparent); }
+.pill.done { color: var(--grn); text-shadow: 0 0 5px var(--grn); }
+.pill.warn { color: var(--red); text-shadow: 0 0 5px var(--red); }
+.ap.warn { border-color: var(--red); box-shadow: 0 0 6px color-mix(in srgb, var(--red) 50%, transparent); }
+.kv { display: flex; justify-content: space-between; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--txt2); margin-top: 4px; }
+.kv b { color: var(--txt); font-weight: 400; white-space: nowrap; }
+.kv.warn b { color: var(--red); }
 .center { padding: 0; overflow: hidden; background: #000; }
 .tab {
   position: absolute; z-index: 3; top: 46%; width: 30px; height: 46px; box-sizing: border-box; padding: 0;
@@ -855,12 +865,118 @@ class NavConsoleCard extends HTMLElement {
       parts.push(`<div data-more="${esc(L.energy_today)}" style="cursor:pointer"><div class="rd">${v != null ? v.toFixed(1) : esc(this._st(L.energy_today).state)}</div>
         <div class="lb" style="margin-top:3px">${esc(L.energy_today_name || `${u} today`)}</div></div>`);
     }
+    if (L.sump_pump && this._st(L.sump_pump.entity)) parts.push(this._sumpHtml(L.sump_pump));
+    if (L.washer && this._st(L.washer.entity)) parts.push(this._washerHtml(L.washer));
     const html = parts.join('') || '<div class="empty">Add sensors under left: in the card config</div>';
     if (html === this._leftHtml) { this._iconsUpdate(this._el.left); return; }
     this._leftHtml = html;
     this._el.left.innerHTML = html;
     this._el.left.querySelectorAll('[data-more]').forEach((n) => n.addEventListener('click', () => this._moreInfo(n.dataset.more)));
     this._bindRows(this._el.left, lights);
+  }
+
+  // ---------------------------------------------------------------- appliances (sump pump, washer)
+
+  // Running if the entity is on / running, or (for a power sensor) above power_threshold watts.
+  _applianceRunning(cfg) {
+    const s = this._st(cfg.entity);
+    if (!s) return false;
+    if (this._isPower(s)) return parseFloat(s.state) > (Number(cfg.power_threshold) || 10);
+    return /^(on|running|run|wash|washing|rinse|rinsing|spin|spinning|drying|soak|pre_?wash|active|pumping)$/i.test(s.state);
+  }
+
+  _isPower(s) { return Number.isFinite(parseFloat(s.state)) && !!s.attributes.unit_of_measurement; }
+
+  _ago(ms) {
+    if (!Number.isFinite(ms)) return '';
+    const m = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    if (m < 1) return 'just now';
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} h ${m % 60} min ago`;
+    return `${Math.floor(h / 24)} d ago`;
+  }
+
+  _mins(v) {
+    if (v == null || !Number.isFinite(v)) return '';
+    const m = Math.round(v);
+    return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;
+  }
+
+  // Minutes from a sensor holding either a number with a time unit, or a timestamp.
+  _minutesFrom(id, until) {
+    const s = this._st(id);
+    if (!s) return null;
+    const n = parseFloat(s.state);
+    const u = String(s.attributes.unit_of_measurement || '').toLowerCase();
+    if (Number.isFinite(n) && !/^\d{4}-/.test(s.state)) return u.startsWith('h') ? n * 60 : u.startsWith('s') ? n / 60 : n;
+    const t = Date.parse(s.state);
+    if (!Number.isFinite(t)) return null;
+    return until ? Math.max(0, (t - Date.now()) / 60000) : (Date.now() - t) / 60000;
+  }
+
+  // For power-sensor appliances last_changed moves with every reading, so track the
+  // running / stopped transitions the card sees itself.
+  _track(key, cfg) {
+    const s = this._st(cfg.entity);
+    const running = this._applianceRunning(cfg);
+    const t = (this._appState = this._appState || {})[key] || {};
+    if (running && !t.running) t.start = Date.now();
+    if (!running && t.running) t.stop = Date.now();
+    t.running = running;
+    this._appState[key] = t;
+    if (!this._isPower(s)) {
+      // on/off entities: last_changed is exactly when the current state began
+      const lc = Date.parse(s.last_changed);
+      if (running) t.start = lc; else t.stop = lc;
+    }
+    return t;
+  }
+
+  _sumpHtml(cfg) {
+    const t = this._track('sump', cfg);
+    const running = t.running;
+    const runs = cfg.runs_today ? this._num(cfg.runs_today) : null;
+    const runMin = cfg.runtime_today ? this._minutesFrom(cfg.runtime_today) : null;
+    // the run counter changes when a run starts, which is the best "last run" for power sensors
+    const counter = cfg.runs_today ? this._st(cfg.runs_today) : null;
+    const last = running ? null : (t.stop || (counter && runs ? Date.parse(counter.last_changed) : NaN));
+    const runningFor = running && t.start ? (Date.now() - t.start) / 60000 : null;
+    const tooMany = !!cfg.alert_runs && runs != null && runs >= Number(cfg.alert_runs);
+    const tooLong = !!cfg.alert_minutes && runningFor != null && runningFor >= Number(cfg.alert_minutes);
+    const warn = tooMany || tooLong;
+    const rows = [];
+    if (runs != null) rows.push(`<div class="kv ${tooMany ? 'warn' : ''}"><span>Runs today</span><b>${Math.round(runs)}</b></div>`);
+    if (runMin != null) rows.push(`<div class="kv"><span>Run time</span><b>${this._mins(runMin)}</b></div>`);
+    if (runningFor != null) rows.push(`<div class="kv ${tooLong ? 'warn' : ''}"><span>Running for</span><b>${this._mins(runningFor)}</b></div>`);
+    else if (Number.isFinite(last)) rows.push(`<div class="kv"><span>Last run</span><b>${this._ago(last)}</b></div>`);
+    return `<div class="ap ${warn ? 'warn' : ''}" data-more="${esc(cfg.entity)}">
+      <div class="h"><span class="lb">${esc(cfg.name || 'Sump pump')}</span><span class="pill ${tooLong ? 'warn' : running ? 'on' : ''}">${tooLong ? 'CHECK' : running ? 'RUNNING' : 'IDLE'}</span></div>
+      ${rows.join('')}<div class="ab" style="margin-top:3px">${warn ? 'check pump' : running ? 'pumping' : 'dry dock'}</div></div>`;
+  }
+
+  _washerHtml(cfg) {
+    const s = this._st(cfg.entity);
+    const t = this._track('washer', cfg);
+    const running = t.running;
+    const reportsDone = /^(done|finished|complete|completed|end|ended)$/i.test(s.state);
+    const sinceStop = t.stop ? (Date.now() - t.stop) / 60000 : null;
+    const done = !running && (reportsDone || (sinceStop != null && sinceStop < (Number(cfg.done_minutes) || 60)));
+    const left = cfg.remaining ? this._minutesFrom(cfg.remaining, true) : null;
+    const stage = cfg.stage && this._st(cfg.stage) ? this._fmt(this._st(cfg.stage)) : '';
+    const rows = [];
+    if (running) {
+      if (stage) rows.push(`<div class="kv"><span>Cycle</span><b>${esc(stage)}</b></div>`);
+      if (left != null) rows.push(`<div class="kv"><span>Time left</span><b>${this._mins(left)}</b></div>`);
+      else if (t.start) rows.push(`<div class="kv"><span>Started</span><b>${this._ago(t.start)}</b></div>`);
+    } else if (done) {
+      rows.push(`<div class="kv"><span>Finished</span><b>${this._ago(t.stop || Date.parse(s.last_changed))}</b></div>`);
+    } else if (t.stop) {
+      rows.push(`<div class="kv"><span>Last used</span><b>${this._ago(t.stop)}</b></div>`);
+    }
+    return `<div class="ap" data-more="${esc(cfg.entity)}">
+      <div class="h"><span class="lb">${esc(cfg.name || 'Washer')}</span><span class="pill ${running ? 'on' : done ? 'done' : ''}">${running ? 'RUNNING' : done ? 'DONE' : 'IDLE'}</span></div>
+      ${rows.join('')}<div class="ab" style="margin-top:3px">${running ? 'cycle active' : done ? 'unload' : 'standing by'}</div></div>`;
   }
 
   _statusClass(s) {

@@ -1,0 +1,61 @@
+# Sump pump and washer helpers for the nav console
+#
+# Turns smart-plug power readings into "running" sensors, and counts the sump pump's runs
+# and run time today (resetting at midnight). History stats keep counting while no
+# dashboard is open, and survive restarts.
+#
+# Install as a package:
+#   1. In configuration.yaml, under `homeassistant:`, add:   packages: !include_dir_named packages
+#      (skip this if you already did it for planes-today.yaml)
+#   2. Change sensor.sump_pump_power and sensor.washer_power below to your plugs' power sensors
+#   3. Save this file as /config/packages/sump_washer.yaml
+#   4. Developer tools > YAML > Check configuration, then restart Home Assistant
+#
+# Already have on/off sensors for them (for example a float switch, or a smart washer
+# that reports its own state)? Delete the matching binary_sensor below and point the
+# history_stats entity_id at your own sensor instead.
+#
+# Then on the card:
+#   left:
+#     sump_pump:
+#       entity: binary_sensor.sump_pump_running
+#       runs_today: sensor.sump_pump_runs_today
+#       runtime_today: sensor.sump_pump_run_time_today
+#     washer:
+#       entity: binary_sensor.washer_running
+
+template:
+  - binary_sensor:
+      - name: Sump pump running
+        unique_id: falcon_gunnery_sump_pump_running
+        device_class: running
+        icon: mdi:water-pump
+        # a sump pump draws several hundred watts while running
+        state: "{{ states('sensor.sump_pump_power') | float(0) > 50 }}"
+        delay_off: "00:00:15"
+      - name: Washer running
+        unique_id: falcon_gunnery_washer_running
+        device_class: running
+        icon: mdi:washing-machine
+        state: "{{ states('sensor.washer_power') | float(0) > 5 }}"
+        # ignore brief spikes, and the quiet pauses between wash, rinse and spin
+        delay_on: "00:00:30"
+        delay_off: "00:05:00"
+
+sensor:
+  - platform: history_stats
+    name: Sump pump runs today
+    unique_id: falcon_gunnery_sump_pump_runs_today
+    entity_id: binary_sensor.sump_pump_running
+    state: "on"
+    type: count
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"
+  - platform: history_stats
+    name: Sump pump run time today
+    unique_id: falcon_gunnery_sump_pump_run_time_today
+    entity_id: binary_sensor.sump_pump_running
+    state: "on"
+    type: time
+    start: "{{ today_at() }}"
+    end: "{{ now() }}"

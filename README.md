@@ -164,6 +164,8 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `humidity` | Humidity sensor in the green ring |
 | `energy_today` | Energy sensor in the bottom readout |
 | `*_name` | Rename any label, for example `thermostat_name: Upstairs` |
+| `sump_pump` | Sump pump box at the bottom (see below) |
+| `washer` | Washer box at the bottom (see below) |
 
 ### `right:`
 | Option | What it shows |
@@ -173,6 +175,44 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `status` | List of devices: plain entity names, or `{ entity, name, tap_action }` where `tap_action` is `toggle` or `more-info` |
 | `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They hide while the flight list is open |
 | `view` | Which side shows first: `status` or `contacts` |
+
+### Sump pump and washer
+
+Two boxes at the bottom of the left panel. [`examples/sump-washer.yaml`](examples/sump-washer.yaml) sets up the Home Assistant helpers: it turns smart-plug power readings into running sensors, and counts the sump pump's runs and run time today.
+
+```yaml
+left:
+  sump_pump:
+    entity: binary_sensor.sump_pump_running        # on/off sensor, or a power sensor in watts
+    runs_today: sensor.sump_pump_runs_today        # optional (history stats, count)
+    runtime_today: sensor.sump_pump_run_time_today # optional (history stats, time)
+    alert_runs: 30        # optional: red when it has run this many times today
+    alert_minutes: 5      # optional: red "CHECK" when one run lasts this long
+  washer:
+    entity: binary_sensor.washer_running   # on/off sensor, a power sensor, or the washer's own status sensor
+    remaining: sensor.washer_completion_time   # optional: end time, or minutes left
+    stage: sensor.washer_job_state             # optional: wash / rinse / spin
+    done_minutes: 60      # how long to show DONE after a cycle ends
+```
+
+| Option | What it does |
+|---|---|
+| `entity` | What tells the card it's running: an on/off or running sensor, a smart washer's status (`wash`, `rinse`, `spin`, `done` and similar), or a power sensor |
+| `power_threshold` | With a power sensor: watts above which it counts as running (default `10`) |
+| `name` | Box heading (default `Sump pump` / `Washer`) |
+
+**What the boxes show:**
+- **Sump pump:**
+  - **IDLE:** runs today, run time today, and when it last ran.
+  - **RUNNING:** how long the current run has lasted.
+  - **Red CHECK:** a single run passes `alert_minutes`, which can mean a stuck float or a failing pump.
+  - **Red box:** runs today reach `alert_runs`.
+- **Washer:**
+  - **RUNNING:** the cycle stage and time left (or when it started).
+  - **DONE, in green:** for an hour after it finishes, so you know to move the laundry.
+  - **IDLE:** when it was last used.
+
+Tap a box for the device's details.
 
 ## Tips
 
