@@ -103,6 +103,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | Option | Default | What it does |
 |---|---|---|
 | `aurebesh` | `true` | Aurebesh labels throughout |
+| `aurebesh_size` | `1.3` | Size of the Aurebesh labels. `1` is the original size |
 | `scale` | `1.25` | Size of text, gauges, readouts and plane markers. `1` is the original size; the side panels widen to match. Camera and other embedded cards keep their own size |
 | `motion` | `false` | Decorative animation (the weather globe spins). The radar sweep is set separately |
 | `height` | `fill` | `fill` sizes the console to the screen, or give a number of pixels |

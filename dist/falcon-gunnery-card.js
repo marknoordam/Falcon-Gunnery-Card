@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.6.0
+ * Falcon Gunnery Card (nav-console-card) v0.6.1
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -33,6 +33,7 @@ const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/Wo
 
 const DEFAULTS = {
   aurebesh: true,
+  aurebesh_size: 1.3,
   motion: false,
   scale: 1.25,
   height: 'fill',
@@ -206,7 +207,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 .left .tab { right: -29px; }
 .right .tab { left: -29px; }
 .lb { font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--txt2); }
-.ab { font-family: var(--ab); font-size: 10px; letter-spacing: .12em; color: var(--acc); opacity: .6; text-transform: none; font-weight: 400; }
+.ab { font-family: var(--ab); font-size: calc(10px * var(--nv-ab, 1)); letter-spacing: .12em; color: var(--acc); opacity: .75; text-transform: none; font-weight: 400; vertical-align: middle; }
 .noab .ab { display: none; }
 .rd { border: 2px solid var(--acc); border-radius: 4px; padding: 4px 8px; font-family: var(--mono); font-size: 22px; color: var(--acc); text-shadow: 0 0 6px var(--acc); line-height: 1.1; white-space: nowrap; overflow: hidden; }
 .ring { text-align: center; cursor: pointer; }
@@ -474,6 +475,7 @@ class NavConsoleCard extends HTMLElement {
     const px = (v, d) => (typeof v === 'number' ? `${v}px` : v || d);
     const k = this._k();
     this._el.nv.style.setProperty('--nv-s', String(k));
+    this._el.nv.style.setProperty('--nv-ab', String(Math.max(0.5, Math.min(3, Number(c.aurebesh_size) || 1))));
     this._el.nv.style.setProperty('--nv-lw', px(c.left?.width, `${Math.round(190 * k)}px`));
     this._el.nv.style.setProperty('--nv-rw', px(c.right?.width, `${Math.round(250 * k)}px`));
     const dpr = window.devicePixelRatio || 1;
