@@ -192,7 +192,7 @@ left:
     entity: binary_sensor.washer_running   # on/off sensor, a power sensor, or the washer's own status sensor
     remaining: sensor.washer_completion_time   # optional: end time, or minutes left
     stage: sensor.washer_job_state             # optional: wash / rinse / spin
-    done_minutes: 60      # how long to show DONE after a cycle ends
+    done_minutes: 60      # how long to show DONE after a cycle ends (0 = only RUNNING / IDLE)
 ```
 
 | Option | What it does |

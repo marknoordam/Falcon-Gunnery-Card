@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.8.0
+ * Falcon Gunnery Card (nav-console-card) v0.8.1
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -961,7 +961,8 @@ class NavConsoleCard extends HTMLElement {
     const running = t.running;
     const reportsDone = /^(done|finished|complete|completed|end|ended)$/i.test(s.state);
     const sinceStop = t.stop ? (Date.now() - t.stop) / 60000 : null;
-    const done = !running && (reportsDone || (sinceStop != null && sinceStop < (Number(cfg.done_minutes) || 60)));
+    const doneMin = cfg.done_minutes == null ? 60 : Number(cfg.done_minutes) || 0;
+    const done = !running && (reportsDone || (sinceStop != null && sinceStop < doneMin));
     const left = cfg.remaining ? this._minutesFrom(cfg.remaining, true) : null;
     const stage = cfg.stage && this._st(cfg.stage) ? this._fmt(this._st(cfg.stage)) : '';
     const rows = [];
