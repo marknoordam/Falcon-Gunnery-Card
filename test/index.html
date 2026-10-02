@@ -25,6 +25,13 @@ html.light body{background-image:url("../dist/trench-light.svg")}
 <script>
 // Stand-ins for Home Assistant's own elements so the card renders outside HA.
 customElements.define('ha-card', class extends HTMLElement { connectedCallback(){ this.style.display='block'; } });
+// Stand-in for HA's card loader: draws a placeholder "holographic camera" for each camera card.
+window.loadCardHelpers = async () => ({ createCardElement: (cfg) => {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:relative;aspect-ratio:16/9;border:2px solid var(--primary-color);background:repeating-linear-gradient(0deg,rgba(64,230,210,.10) 0 2px,transparent 2px 4px),radial-gradient(circle at 50% 60%,rgba(64,230,210,.35),rgba(0,0,0,.9));box-shadow:0 0 8px rgba(64,230,210,.45);font:11px "Share Tech Mono",monospace;color:var(--primary-color)';
+  el.innerHTML = `<span style="position:absolute;left:6px;bottom:4px">${(cfg.entity || cfg.type).toUpperCase()}</span><span style="position:absolute;right:6px;top:4px">REC</span>`;
+  return el;
+} });
 customElements.define('ha-state-icon', class extends HTMLElement {
   set stateObj(s){ this._s=s; this.r(); } set hass(h){}
   r(){ const d=(this._s?.entity_id||'').split('.')[0]; this.style.cssText='display:inline-block;width:16px;height:16px;border:1.5px solid currentColor;box-sizing:border-box;border-radius:'+(d==='light'?'50%':'0'); }
@@ -79,9 +86,10 @@ const card=document.createElement('nav-console-card');
 card.setConfig({
   height_offset: 44,
   radar:{entity:FR,radius:20,distance_unit:'mi',sound_alerts:'all',trail_length:7},
-  left:{outside_temp:'sensor.outdoor_temperature',thermostat:'climate.living_room',humidity:'sensor.living_room_humidity',energy_today:'sensor.energy_today',
+  left:{lights:['light.living_room','light.kitchen','light.garage'],outside_temp:'sensor.outdoor_temperature',thermostat:'climate.living_room',humidity:'sensor.living_room_humidity',energy_today:'sensor.energy_today',
     meter:[{name:'HVAC',entity:'sensor.hvac_power'},{name:'Kitchen',entity:'sensor.kitchen_power'},{name:'Office',entity:'sensor.office_power'},{name:'EV',entity:'sensor.ev_power'},{name:'Laundry',entity:'sensor.laundry_power'}]},
-  right:{weather:'weather.home',status:['light.living_room','light.kitchen','light.garage','lock.front_door','alarm_control_panel.home','cover.garage_door']},
+  right:{weather:'weather.home',status:['lock.front_door','alarm_control_panel.home','cover.garage_door'],
+    cards:[{type:'picture-entity',entity:'camera.front_door',show_state:false},{type:'picture-entity',entity:'camera.hangar_bay',show_state:false}]},
 });
 document.getElementById('host').appendChild(card);
 function push(){ card.hass={...hass,states:{...states}}; }

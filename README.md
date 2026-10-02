@@ -2,12 +2,12 @@
 
 A full-screen Star Wars "nav console" for Home Assistant, with a live flight radar in the middle. It's built to match the [Falcon Gunnery Theme](https://github.com/marknoordam/Falcon-Gunnery-Theme).
 
-- **Left panel:** outdoor temperature, thermostat and humidity ring gauges, a power level meter (the busiest circuit in red), and energy used today.
+- **Left panel:** outdoor temperature, your light switches, thermostat and humidity ring gauges, a power level meter (the busiest circuit in red), and energy used today.
 - **Center:** a flight radar for the [FlightRadar24 integration](https://github.com/AlexandrErohin/home-assistant-flightradar24), drawn as a gunnery radar:
   - a black scope with a faint grid, stars, crosshair, X lines, an ellipse and range rings
   - your local map as faint teal lines (roads, rivers, shorelines)
   - a sweep beam, and blips that light up as it passes
-- **Right panel:** weather and a tappable status list. Tap **Aircraft** to swap it for the flight list.
+- **Right panel (security):** weather, a tappable list of locks, alarm and doors, and any cards you add, such as your camera views. Tap **Aircraft** to swap it for the flight list.
 
 This card also supplies the theme's fonts (Michroma, News Cycle, Share Tech Mono, Aurebesh Rodian) and background images, so install it even if you only want the theme.
 
@@ -41,6 +41,10 @@ radar:
   distance_unit: mi
 left:
   outside_temp: sensor.outdoor_temperature
+  lights:
+    - light.living_room
+    - light.kitchen
+    - { entity: light.garage, name: Hangar bay }
   thermostat: climate.living_room
   humidity: sensor.living_room_humidity
   energy_today: sensor.energy_today
@@ -52,13 +56,16 @@ left:
 right:
   weather: weather.home
   status:
-    - light.living_room
-    - light.kitchen
-    - { entity: light.garage, name: Hangar bay }
     - lock.front_door
     - alarm_control_panel.home
     - cover.garage_door
+  cards:                     # any Home Assistant cards, shown under the list
+    - type: picture-entity
+      entity: camera.front_door
+      show_state: false
 ```
+
+To use a camera card you already have, open it in the dashboard editor → **Show code editor**, copy its YAML, and paste it as an item under `cards:` (indent it to line up).
 
 Leave out anything you don't have, and that part of the panel disappears.
 
@@ -129,7 +136,10 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 ### `left:`
 | Option | What it shows |
 |---|---|
+| `width` | Panel width, in pixels (default `190`) |
 | `outside_temp` | Temperature sensor in the top readout |
+| `lights` | Light switches, shown above the thermostat: plain entity names, or `{ entity, name, tap_action }`. Tap to toggle |
+| `lights_name` | Heading over the lights (default `Lights`) |
 | `thermostat` | Climate device in the ring gauge |
 | `meter` | List of power sensors: plain entity names, or `{ name, entity }` |
 | `meter_title`, `meter_max` | Meter heading, and full-scale value (default: automatic) |
@@ -140,8 +150,10 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 ### `right:`
 | Option | What it shows |
 |---|---|
+| `width` | Panel width, in pixels (default `250`). Widen it for bigger camera views |
 | `weather` | Weather device: condition, temperature, and today's high and low |
 | `status` | List of devices: plain entity names, or `{ entity, name, tap_action }` where `tap_action` is `toggle` or `more-info` |
+| `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They hide while the flight list is open |
 | `view` | Which side shows first: `status` or `contacts` |
 
 ## Tips

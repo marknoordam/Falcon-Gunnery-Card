@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.3.0
+ * Falcon Gunnery Card (nav-console-card) v0.4.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -165,7 +165,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
   --mono: "Share Tech Mono", ui-monospace, monospace;
   --ab: var(--aurebesh-font-family, "Aurebesh Rodian");
   position: relative; box-sizing: border-box; height: var(--nv-height, 640px);
-  display: grid; grid-template-columns: minmax(132px, 158px) minmax(0, 1fr) minmax(190px, 230px);
+  display: grid; grid-template-columns: var(--nv-lw, 190px) minmax(0, 1fr) var(--nv-rw, 250px);
   gap: 24px; padding: 10px; font-family: var(--body); color: var(--txt);
 }
 .nv.narrow { grid-template-columns: 1fr 1fr; height: auto; }
@@ -180,6 +180,9 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 .side { overflow: visible; }
 .lslots { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .rbody { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
+.rcards { display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 60%; overflow-y: auto; scrollbar-width: none; }
+.rcards:empty, .contacts .rcards { display: none; }
+.lights { display: flex; flex-direction: column; }
 .center { padding: 0; overflow: hidden; background: #000; }
 .tab {
   position: absolute; z-index: 3; top: 46%; width: 30px; height: 46px; box-sizing: border-box; padding: 0;
@@ -298,6 +301,7 @@ class NavConsoleCard extends HTMLElement {
     if (!this._built) this._build();
     this._subscribeForecast();
     this._update();
+    if (this._el) this._el.rcards.childNodes.forEach((card) => { card.hass = hass; });
   }
 
   connectedCallback() {
@@ -365,6 +369,7 @@ class NavConsoleCard extends HTMLElement {
           <div class="pn side right">
             <div class="hdb"><span class="rt">STATUS</span><span class="ab rta">status</span></div>
             <div class="rbody"></div>
+            <div class="rcards"></div>
             <button class="tab tab-view" title="Aircraft contacts" aria-label="Show aircraft contacts">${ICON.plane}</button>
           </div>
         </div>
@@ -373,8 +378,10 @@ class NavConsoleCard extends HTMLElement {
     this._el = {
       nv: $('.nv'), left: $('.lslots'), center: $('.center'), cvS: $('.cv-static'), cvL: $('.cv-live'),
       cnt: $('.cnt'), stale: $('.stale'), snd: $('.snd'), ro: $('.ro'), rt: $('.rt'), rta: $('.rta'), rbody: $('.rbody'),
-      tabView: $('.tab-view'),
+      tabView: $('.tab-view'), right: $('.right'), rcards: $('.rcards'),
     };
+    this._childCards = [];
+    this._buildChildCards();
     this._ctxS = this._el.cvS.getContext('2d');
     this._ctx = this._el.cvL.getContext('2d');
     $('.tab-map').addEventListener('click', () => { this._showMap = !this._showMap; this._staticKey = ''; this._drawStatic(); });
@@ -393,6 +400,57 @@ class NavConsoleCard extends HTMLElement {
     this._renderRight();
   }
 
+  // Any Home Assistant cards listed under right.cards (for example a camera card) render
+  // below the security list, built with HA's own card loader so every card type works.
+  async _buildChildCards() {
+    const list = Array.isArray(this._config.right?.cards) ? this._config.right.cards : [];
+    if (!list.length || !window.loadCardHelpers) return;
+    const token = {};
+    this._childToken = token;
+    let helpers;
+    try { helpers = await window.loadCardHelpers(); } catch (e) { return; }
+    if (token !== this._childToken) return;
+    const make = (cfg) => {
+      const el = helpers.createCardElement(cfg);
+      if (this._hass) el.hass = this._hass;
+      // custom cards that load later ask to be rebuilt once they're defined
+      el.addEventListener('ll-rebuild', (ev) => { ev.stopPropagation(); el.replaceWith(make(cfg)); }, { once: true });
+      return el;
+    };
+    for (const cfg of list) {
+      try { this._el.rcards.appendChild(make(cfg)); } catch (e) { /* invalid card config: HA shows its own error card */ }
+    }
+  }
+
+  _items(list) {
+    return (Array.isArray(list) ? list : []).map((x) => (typeof x === 'string' ? { entity: x } : x)).filter((x) => x && x.entity);
+  }
+
+  _rowsHtml(items) {
+    return items.map((it) => {
+      const s = this._st(it.entity);
+      if (!s) return `<div class="st mid"><span class="n">${esc(it.name || it.entity)}</span><span class="v">not found</span></div>`;
+      const name = it.name || s.attributes.friendly_name || it.entity;
+      return `<div class="st ${this._statusClass(s)}" data-entity="${esc(it.entity)}" role="button" tabindex="0">
+        <span class="n"><ha-state-icon data-icon="${esc(it.entity)}"></ha-state-icon>${esc(name)}</span><span class="v">${esc(this._fmt(s))}</span></div>`;
+    }).join('');
+  }
+
+  _bindRows(root, items) {
+    root.querySelectorAll('[data-entity]').forEach((el) => {
+      const act = () => {
+        const id = el.dataset.entity;
+        const it = items.find((x) => x.entity === id) || {};
+        const mode = it.tap_action || (TOGGLE_DOMAINS.includes(id.split('.')[0]) ? 'toggle' : 'more-info');
+        if (mode === 'toggle') this._hass.callService('homeassistant', 'toggle', { entity_id: id });
+        else this._moreInfo(id);
+      };
+      el.addEventListener('click', act);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+    });
+    this._iconsUpdate(root);
+  }
+
   _resize() {
     if (!this._built) return;
     const c = this._config;
@@ -400,6 +458,9 @@ class NavConsoleCard extends HTMLElement {
     this._el.nv.classList.toggle('narrow', w < 760);
     if (c.height === 'fill') this._el.nv.style.setProperty('--nv-height', `max(480px, calc(100vh - ${Number(c.height_offset) || 0}px))`);
     else this._el.nv.style.setProperty('--nv-height', typeof c.height === 'number' ? `${c.height}px` : c.height);
+    const px = (v, d) => (typeof v === 'number' ? `${v}px` : v || d);
+    this._el.nv.style.setProperty('--nv-lw', px(c.left?.width, '190px'));
+    this._el.nv.style.setProperty('--nv-rw', px(c.right?.width, '250px'));
     const rect = this._el.center.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     this._w = Math.max(1, rect.width - 5);
@@ -667,6 +728,10 @@ class NavConsoleCard extends HTMLElement {
       parts.push(`<div data-more="${esc(L.outside_temp)}" style="cursor:pointer"><div class="lb">${esc(L.outside_temp_name || 'Outside')} <span class="ab">outside</span></div>
         <div class="rd">${v != null ? `${Math.round(v)}°` : esc(this._st(L.outside_temp).state)}</div></div>`);
     }
+    const lights = this._items(L.lights);
+    if (lights.length) {
+      parts.push(`<div class="lights"><div class="lb" style="margin-bottom:2px">${esc(L.lights_name || 'Lights')} <span class="ab">lights</span></div>${this._rowsHtml(lights)}</div>`);
+    }
     const th = this._st(L.thermostat);
     if (th) {
       const a = th.attributes;
@@ -705,10 +770,11 @@ class NavConsoleCard extends HTMLElement {
         <div class="lb" style="margin-top:3px">${esc(L.energy_today_name || `${u} today`)}</div></div>`);
     }
     const html = parts.join('') || '<div class="empty">Add sensors under left: in the card config</div>';
-    if (html === this._leftHtml) return;
+    if (html === this._leftHtml) { this._iconsUpdate(this._el.left); return; }
     this._leftHtml = html;
     this._el.left.innerHTML = html;
     this._el.left.querySelectorAll('[data-more]').forEach((n) => n.addEventListener('click', () => this._moreInfo(n.dataset.more)));
+    this._bindRows(this._el.left, lights);
   }
 
   _statusClass(s) {
@@ -747,6 +813,7 @@ class NavConsoleCard extends HTMLElement {
     this._el.rta.textContent = contacts ? 'contacts' : 'status';
     this._el.tabView.innerHTML = contacts ? ICON.shield : ICON.plane;
     this._el.tabView.title = contacts ? 'Home status' : 'Aircraft contacts';
+    this._el.right.classList.toggle('contacts', contacts);
     if (contacts) { this._renderContacts(); return; }
     const R = this._config.right || {};
     let html = '';
@@ -757,43 +824,30 @@ class NavConsoleCard extends HTMLElement {
         <div style="font-size:13px">${esc(this._fmt(wx))}${t}</div>
         <div class="lb" style="margin-top:2px">${esc(this._weatherLine(wx))}</div></div>`;
     }
-    const items = (Array.isArray(R.status) ? R.status : []).map((x) => (typeof x === 'string' ? { entity: x } : x)).filter((x) => x && x.entity);
+    const items = this._items(R.status);
     const n = this._visibleAircraft().filter((a) => !a.lost).length;
     let rows = '';
     if (this._config.radar.entity) {
       rows += `<div class="st on" data-view="contacts" role="button" tabindex="0" title="Show the flight list">
         <span class="n"><span class="ic">${ICON.plane}</span>Aircraft</span><span class="v">${n} in range</span></div>`;
     }
-    rows += items.map((it) => {
-      const s = this._st(it.entity);
-      if (!s) return `<div class="st mid"><span class="n">${esc(it.name || it.entity)}</span><span class="v">not found</span></div>`;
-      const name = it.name || s.attributes.friendly_name || it.entity;
-      return `<div class="st ${this._statusClass(s)}" data-entity="${esc(it.entity)}" role="button" tabindex="0">
-        <span class="n"><ha-state-icon data-icon="${esc(it.entity)}"></ha-state-icon>${esc(name)}</span><span class="v">${esc(this._fmt(s))}</span></div>`;
-    }).join('');
+    rows += this._rowsHtml(items);
     html += `<div class="list">${rows}</div>`;
-    if (html === this._rightHtml) { this._iconsUpdate(); return; }
+    if (html === this._rightHtml) { this._iconsUpdate(this._el.rbody); return; }
     this._rightHtml = html;
     this._contactsHtml = '';
     this._el.rbody.innerHTML = html;
-    this._iconsUpdate();
     const on = (el, fn) => {
       el.addEventListener('click', fn);
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } });
     };
     this._el.rbody.querySelectorAll('[data-more]').forEach((el) => on(el, () => this._moreInfo(el.dataset.more)));
     this._el.rbody.querySelectorAll('[data-view]').forEach((el) => on(el, () => this._setView('contacts')));
-    this._el.rbody.querySelectorAll('[data-entity]').forEach((el) => on(el, () => {
-      const id = el.dataset.entity;
-      const it = items.find((x) => x.entity === id) || {};
-      const act = it.tap_action || (TOGGLE_DOMAINS.includes(id.split('.')[0]) ? 'toggle' : 'more-info');
-      if (act === 'toggle') this._hass.callService('homeassistant', 'toggle', { entity_id: id });
-      else this._moreInfo(id);
-    }));
+    this._bindRows(this._el.rbody, items);
   }
 
-  _iconsUpdate() {
-    this._el.rbody.querySelectorAll('ha-state-icon[data-icon]').forEach((ic) => {
+  _iconsUpdate(root) {
+    root.querySelectorAll('ha-state-icon[data-icon]').forEach((ic) => {
       ic.hass = this._hass;
       ic.stateObj = this._st(ic.dataset.icon);
     });
