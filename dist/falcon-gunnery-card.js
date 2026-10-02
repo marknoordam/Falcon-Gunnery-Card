@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.8.1
+ * Falcon Gunnery Card (nav-console-card) v0.8.2
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.8.1';
+const VERSION = '0.8.2';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -192,7 +192,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
   padding: 10px; display: flex; flex-direction: column; gap: 10px;
 }
 .side { overflow: visible; }
-.lslots { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.lslots { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--acc) transparent; padding-right: 2px; }
 .rbody { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
 .lslots, .rbody, .hdb, .ovl, .tab { zoom: var(--nv-s, 1); }
 .rcards { display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 60%; overflow-y: auto; scrollbar-width: none; }
@@ -865,8 +865,14 @@ class NavConsoleCard extends HTMLElement {
       parts.push(`<div data-more="${esc(L.energy_today)}" style="cursor:pointer"><div class="rd">${v != null ? v.toFixed(1) : esc(this._st(L.energy_today).state)}</div>
         <div class="lb" style="margin-top:3px">${esc(L.energy_today_name || `${u} today`)}</div></div>`);
     }
-    if (L.sump_pump && this._st(L.sump_pump.entity)) parts.push(this._sumpHtml(L.sump_pump));
-    if (L.washer && this._st(L.washer.entity)) parts.push(this._washerHtml(L.washer));
+    // accepted under left: or at the top level, as an entity id or as { entity, ... }
+    const appCfg = (v) => (typeof v === 'string' ? { entity: v } : v && typeof v === 'object' ? v : null);
+    const missing = (name, cfg) => `<div class="ap warn"><div class="h"><span class="lb">${esc(name)}</span><span class="pill warn">NOT FOUND</span></div>
+      <div class="kv warn"><span>Entity</span><b>${esc(cfg.entity || '(none set)')}</b></div></div>`;
+    const sump = appCfg(L.sump_pump ?? this._config.sump_pump);
+    if (sump) parts.push(this._st(sump.entity) ? this._sumpHtml(sump) : missing(sump.name || 'Sump pump', sump));
+    const washer = appCfg(L.washer ?? this._config.washer);
+    if (washer) parts.push(this._st(washer.entity) ? this._washerHtml(washer) : missing(washer.name || 'Washer', washer));
     const html = parts.join('') || '<div class="empty">Add sensors under left: in the card config</div>';
     if (html === this._leftHtml) { this._iconsUpdate(this._el.left); return; }
     this._leftHtml = html;
