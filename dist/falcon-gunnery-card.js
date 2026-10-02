@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.4.0
+ * Falcon Gunnery Card (nav-console-card) v0.5.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -34,6 +34,7 @@ const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/Wo
 const DEFAULTS = {
   aurebesh: true,
   motion: false,
+  scale: 1.25,
   height: 'fill',
   height_offset: 72,
   left: {},
@@ -166,7 +167,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
   --ab: var(--aurebesh-font-family, "Aurebesh Rodian");
   position: relative; box-sizing: border-box; height: var(--nv-height, 640px);
   display: grid; grid-template-columns: var(--nv-lw, 190px) minmax(0, 1fr) var(--nv-rw, 250px);
-  gap: 24px; padding: 10px; font-family: var(--body); color: var(--txt);
+  gap: calc(24px * var(--nv-s, 1)); padding: 10px; font-family: var(--body); color: var(--txt);
 }
 .nv.narrow { grid-template-columns: 1fr 1fr; height: auto; }
 .nv.narrow .center { grid-column: 1 / -1; order: -1; height: min(100vw, 560px); }
@@ -180,6 +181,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 .side { overflow: visible; }
 .lslots { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .rbody { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
+.lslots, .rbody, .hdb, .ovl, .tab { zoom: var(--nv-s, 1); }
 .rcards { display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 60%; overflow-y: auto; scrollbar-width: none; }
 .rcards:empty, .contacts .rcards { display: none; }
 .lights { display: flex; flex-direction: column; }
@@ -459,8 +461,10 @@ class NavConsoleCard extends HTMLElement {
     if (c.height === 'fill') this._el.nv.style.setProperty('--nv-height', `max(480px, calc(100vh - ${Number(c.height_offset) || 0}px))`);
     else this._el.nv.style.setProperty('--nv-height', typeof c.height === 'number' ? `${c.height}px` : c.height);
     const px = (v, d) => (typeof v === 'number' ? `${v}px` : v || d);
-    this._el.nv.style.setProperty('--nv-lw', px(c.left?.width, '190px'));
-    this._el.nv.style.setProperty('--nv-rw', px(c.right?.width, '250px'));
+    const k = this._k();
+    this._el.nv.style.setProperty('--nv-s', String(k));
+    this._el.nv.style.setProperty('--nv-lw', px(c.left?.width, `${Math.round(190 * k)}px`));
+    this._el.nv.style.setProperty('--nv-rw', px(c.right?.width, `${Math.round(250 * k)}px`));
     const rect = this._el.center.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     this._w = Math.max(1, rect.width - 5);
@@ -479,7 +483,7 @@ class NavConsoleCard extends HTMLElement {
   _geom() {
     const r = this._config.radar;
     const home = this._home();
-    const roH = 74;
+    const roH = 74 * this._k();
     this._cx = this._w / 2;
     this._cy = (this._h - roH) / 2 + 4;
     this._R = Math.max(40, Math.min(this._w, this._h - roH) / 2 - 16);
@@ -488,6 +492,9 @@ class NavConsoleCard extends HTMLElement {
     this._scale = 2 ** this._zoom;
     this._homeWP = mercator(home.lat, home.lon);
   }
+
+  // Size multiplier for text, gauges and markers (config `scale`, 0.75 to 2).
+  _k() { return Math.max(0.75, Math.min(2, Number(this._config?.scale) || 1)); }
 
   _home() {
     const r = this._config?.radar || {};
@@ -568,7 +575,8 @@ class NavConsoleCard extends HTMLElement {
     ctx.lineWidth = 2;
     ctx.shadowColor = c.acc;
     ctx.shadowBlur = 4;
-    ctx.font = `10px ${c.mono}`;
+    const k = this._k();
+    ctx.font = `${10 * k}px ${c.mono}`;
     const unit = r.distance_unit.toUpperCase();
     for (let i = 1; i <= 4; i++) {
       const rr = R * i / 4;
@@ -576,7 +584,7 @@ class NavConsoleCard extends HTMLElement {
       ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke();
       const v = Number(r.radius) * i / 4;
       ctx.globalAlpha = 1;
-      ctx.fillText(`${Number.isInteger(v) ? v : v.toFixed(1)} ${unit}`, cx + 4, cy - rr - 4);
+      ctx.fillText(`${Number.isInteger(v) ? v : v.toFixed(1)} ${unit}`, cx + 4 * k, cy - rr - 4 * k);
     }
     ctx.restore();
 
@@ -584,12 +592,12 @@ class NavConsoleCard extends HTMLElement {
     ctx.save();
     ctx.fillStyle = c.acc;
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 7); ctx.lineTo(cx + 6, cy + 5); ctx.lineTo(cx - 6, cy + 5); ctx.closePath();
+    ctx.moveTo(cx, cy - 7 * k); ctx.lineTo(cx + 6 * k, cy + 5 * k); ctx.lineTo(cx - 6 * k, cy + 5 * k); ctx.closePath();
     ctx.fill();
-    ctx.font = `700 10px ${c.body}`;
+    ctx.font = `700 ${10 * k}px ${c.body}`;
     ctx.textAlign = 'center';
     if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
-    ctx.fillText('HOME', cx, cy + 20);
+    ctx.fillText('HOME', cx, cy + 20 * k);
     ctx.restore();
   }
 
@@ -1004,7 +1012,7 @@ class NavConsoleCard extends HTMLElement {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     let best = null;
-    let bd = 22;
+    let bd = 22 * this._k();
     for (const ac of this._visibleAircraft()) {
       if (ac.sx == null) continue;
       const d = Math.hypot(ac.sx - x, ac.sy - y);
@@ -1094,6 +1102,7 @@ class NavConsoleCard extends HTMLElement {
     }
 
     const home = this._home();
+    const k = this._k();
     const period = Math.max(1, Number(r.sweep_period)) * 1000;
     const alertM = Number(r.alert_distance) * (r.distance_unit === 'km' ? M_PER_KM : M_PER_MI);
     const vis = this._visibleAircraft();
@@ -1141,6 +1150,7 @@ class NavConsoleCard extends HTMLElement {
 
       ctx.save();
       ctx.translate(sx, sy);
+      ctx.scale(k, k);
       ctx.globalAlpha = Math.min(1, inten * pulse);
       ctx.fillStyle = color;
       ctx.strokeStyle = c.txt;
@@ -1156,12 +1166,12 @@ class NavConsoleCard extends HTMLElement {
 
       ctx.save();
       ctx.globalAlpha = Math.min(1, inten * pulse);
-      ctx.font = `10px ${c.mono}`;
+      ctx.font = `${10 * k}px ${c.mono}`;
       ctx.fillStyle = ac.emergency ? c.red : c.txt;
-      ctx.fillText(ac.callsign + (ac.emergency ? ` ${ac.squawk}` : ''), sx + 9, sy - 2);
-      ctx.font = `9px ${c.mono}`;
+      ctx.fillText(ac.callsign + (ac.emergency ? ` ${ac.squawk}` : ''), sx + 9 * k, sy - 2 * k);
+      ctx.font = `${9 * k}px ${c.mono}`;
       ctx.fillStyle = c.txt2;
-      ctx.fillText(this._altText(ac.alt) + (ac.trend || ''), sx + 9, sy + 9);
+      ctx.fillText(this._altText(ac.alt) + (ac.trend || ''), sx + 9 * k, sy + 9 * k);
       ctx.restore();
 
       if (ac.id === this._selectedId) selAc = ac;
@@ -1171,7 +1181,7 @@ class NavConsoleCard extends HTMLElement {
       ctx.save();
       ctx.strokeStyle = c.amb;
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(selAc.sx, selAc.sy, 15, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(selAc.sx, selAc.sy, 15 * k, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
 

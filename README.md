@@ -103,6 +103,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | Option | Default | What it does |
 |---|---|---|
 | `aurebesh` | `true` | Aurebesh labels throughout |
+| `scale` | `1.25` | Size of text, gauges, readouts and plane markers. `1` is the original size; the side panels widen to match. Camera and other embedded cards keep their own size |
 | `motion` | `false` | Decorative animation (the weather globe spins). The radar sweep is set separately |
 | `height` | `fill` | `fill` sizes the console to the screen, or give a number of pixels |
 | `height_offset` | `72` | Pixels left for the HA header with `fill`. Use about `16` in kiosk mode |
@@ -136,7 +137,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 ### `left:`
 | Option | What it shows |
 |---|---|
-| `width` | Panel width, in pixels (default `190`) |
+| `width` | Panel width, in pixels (default `190` × `scale`) |
 | `outside_temp` | Temperature sensor in the top readout |
 | `lights` | Light switches, shown above the thermostat: plain entity names, or `{ entity, name, tap_action }`. Tap to toggle |
 | `lights_name` | Heading over the lights (default `Lights`) |
@@ -150,7 +151,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 ### `right:`
 | Option | What it shows |
 |---|---|
-| `width` | Panel width, in pixels (default `250`). Widen it for bigger camera views |
+| `width` | Panel width, in pixels (default `250` × `scale`). Widen it for bigger camera views |
 | `weather` | Weather device: condition, temperature, and today's high and low |
 | `status` | List of devices: plain entity names, or `{ entity, name, tap_action }` where `tap_action` is `toggle` or `more-info` |
 | `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They hide while the flight list is open |
