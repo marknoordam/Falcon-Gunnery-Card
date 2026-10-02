@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.5.0
+ * Falcon Gunnery Card (nav-console-card) v0.5.1
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.5.0';
+const VERSION = '0.5.1';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -465,15 +465,17 @@ class NavConsoleCard extends HTMLElement {
     this._el.nv.style.setProperty('--nv-s', String(k));
     this._el.nv.style.setProperty('--nv-lw', px(c.left?.width, `${Math.round(190 * k)}px`));
     this._el.nv.style.setProperty('--nv-rw', px(c.right?.width, `${Math.round(250 * k)}px`));
-    const rect = this._el.center.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    this._w = Math.max(1, rect.width - 5);
-    this._h = Math.max(1, rect.height - 5);
+    this._w = Math.max(1, this._el.cvL.clientWidth);
+    this._h = Math.max(1, this._el.cvL.clientHeight);
     for (const [cv, ctx] of [[this._el.cvS, this._ctxS], [this._el.cvL, this._ctx]]) {
       cv.width = Math.round(this._w * dpr);
       cv.height = Math.round(this._h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // exact backing-store ratio, so each CSS pixel maps to whole device pixels
+      ctx.setTransform(cv.width / this._w, 0, 0, cv.height / this._h, 0, 0);
+      ctx.imageSmoothingQuality = 'high';
     }
+    this._watchDpr(dpr);
     this._geom();
     this._staticKey = '';
     this._drawStatic();
@@ -491,6 +493,15 @@ class NavConsoleCard extends HTMLElement {
     this._zoom = Math.log2(156543.03392 * Math.cos(toRad(home.lat)) * this._R / this._radiusM);
     this._scale = 2 ** this._zoom;
     this._homeWP = mercator(home.lat, home.lon);
+  }
+
+  // Browser zoom and moving between screens change the pixel density without resizing
+  // the card, so watch for it and redraw at the new sharpness.
+  _watchDpr(dpr) {
+    if (this._dprQuery === dpr || !window.matchMedia) return;
+    this._dprQuery = dpr;
+    const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    mq.addEventListener('change', () => this._resize(), { once: true });
   }
 
   // Size multiplier for text, gauges and markers (config `scale`, 0.75 to 2).
@@ -513,7 +524,7 @@ class NavConsoleCard extends HTMLElement {
 
   _drawStatic() {
     if (!this._built || !this._hass || !this._col) return;
-    const key = [this._w, this._h, this._zoom.toFixed(3), this._showMap, this._col.acc, this._homeWP.join()].join('|');
+    const key = [this._w, this._h, window.devicePixelRatio, this._zoom.toFixed(3), this._showMap, this._col.acc, this._homeWP.join()].join('|');
     if (key === this._staticKey) return;
     this._staticKey = key;
     const ctx = this._ctxS;
@@ -606,7 +617,8 @@ class NavConsoleCard extends HTMLElement {
   _drawMapLines(key) {
     const ctx = this._ctxS;
     const opacity = Math.max(0, Math.min(1, Number(this._config.radar.map_opacity)));
-    const z = Math.max(0, Math.min(16, Math.floor(this._zoom)));
+    const dpr = window.devicePixelRatio || 1;
+    const z = Math.max(0, Math.min(16, Math.ceil(this._zoom + Math.log2(dpr))));
     const k = 2 ** (this._zoom - z);
     const n = 2 ** z;
     const hx = this._homeWP[0] * n;
