@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.9.0
+ * Falcon Gunnery Card (nav-console-card) v0.9.1
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.9.0';
+const VERSION = '0.9.1';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -695,9 +695,6 @@ class NavConsoleCard extends HTMLElement {
         ctx.setLineDash([6 * k, 6 * k]);
         ctx.beginPath(); ctx.arc(cx, cy, rz, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.font = `${9 * k}px ${c.mono}`;
-        ctx.textAlign = 'right';
-        ctx.fillText(`TODAY ZONE ${this._todayRadiusText()}`, cx - 4 * k, cy + rz + 12 * k);
         ctx.restore();
       }
     }
