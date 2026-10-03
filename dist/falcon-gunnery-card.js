@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.8.2
+ * Falcon Gunnery Card (nav-console-card) v0.9.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,12 +21,32 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.8.2';
+const VERSION = '0.9.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
 const HELI_MODEL_RE = /helicopter|eurocopter|sikorsky|robinson r|bell \d|agusta|kamov|airbus h\d|leonardo aw/i;
 const TOGGLE_DOMAINS = ['light', 'switch', 'fan', 'input_boolean'];
+
+// Special aircraft to flag on the radar. Each rule matches on any of its lists; a config
+// entry can use a preset by name, extend one ({ preset: rcaf, color: ... }), or define its own.
+const HIGHLIGHT_PRESETS = {
+  warplane: {
+    name: 'Canadian Warplane Heritage', label: 'CWH', color: '#ffd166', icon: 'star', aurebesh: 'warplane heritage',
+    // ICAO designator CWH (telephony WARPLANE HERITAGE), plus the museum's registrations
+    callsign_prefix: ['CWH'],
+    airline: ['warplane heritage'],
+    registration: ['C-GVRA', 'C-GCWM', 'C-GCWH', 'CF-UUU', 'C-FUUU', 'CF-DLC', 'C-FDLC'],
+  },
+  rcaf: {
+    name: 'Royal Canadian Air Force', label: 'RCAF', color: '#6fb6ff', icon: 'roundel', aurebesh: 'royal canadian air force',
+    // ICAO designator CFC (telephony CANFORCE)
+    callsign_prefix: ['CFC', 'CANFORCE'],
+    airline: ['royal canadian air force', 'canadian armed forces', 'canadian forces', 'rcaf'],
+    // RCAF serials are numbers only (e.g. 130612) on Canadian transponder addresses (C00000-C3FFFF)
+    canadian_military_serial: true,
+  },
+};
 const M_PER_MI = 1609.344;
 const M_PER_KM = 1000;
 const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
@@ -62,6 +82,7 @@ const DEFAULTS = {
     show_photo: true,
     today_count: null,
     today_radius_km: 10,
+    highlights: ['warplane', 'rcaf'],
   },
 };
 
@@ -249,6 +270,7 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 .ct .cs { color: var(--acc); letter-spacing: .04em; }
 .ct.low .cs { color: var(--amb); }
 .ct.em .cs, .ct.em .a { color: var(--red); }
+.ct .tag { font-size: 10px; padding: 0 4px; border: 1px solid currentColor; margin-left: 4px; letter-spacing: .06em; }
 .ct .b { color: var(--txt2); font-family: var(--body); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .photo { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border: 1.5px solid var(--acc); display: block; }
 .empty { color: var(--txt2); font-size: 12px; padding: 10px 4px; text-align: center; }
@@ -320,6 +342,11 @@ class NavConsoleCard extends HTMLElement {
     if (!['mi', 'km'].includes(cfg.radar.distance_unit)) throw new Error('nav-console-card: radar.distance_unit must be mi or km');
     if (!(Number(cfg.radar.radius) > 0)) throw new Error('nav-console-card: radar.radius must be a positive number');
     this._config = cfg;
+    this._rules = (Array.isArray(cfg.radar.highlights) ? cfg.radar.highlights : [])
+      .map((r) => (typeof r === 'string' ? { preset: r } : r))
+      .filter((r) => r && typeof r === 'object')
+      .map((r) => ({ ...(HIGHLIGHT_PRESETS[r.preset] || {}), ...r }))
+      .map((r) => ({ ...r, color: r.color || '#ff4fd8', icon: r.icon || 'arrow', label: r.label || r.name || 'FLAG' }));
     try { this._armed = localStorage.getItem('nav-console-card-sound') === '1'; } catch (e) { this._armed = false; }
     this._view = cfg.right.view === 'contacts' ? 'contacts' : 'status';
     this._showMap = cfg.radar.map !== false;
@@ -1128,6 +1155,9 @@ class NavConsoleCard extends HTMLElement {
       ac.emergency = EMERGENCY_SQUAWKS.includes(ac.squawk);
       if (ac.emergency && !wasEm && this._initialSyncDone) this._ping('emergency');
       ac.photo = field(f.aircraft_photo_small) || field(f.aircraft_photo_medium);
+      const wasFlag = ac.flag;
+      ac.flag = this._matchRule(f, ac);
+      if (ac.flag && !wasFlag && this._initialSyncDone) this._ping('highlight');
       ac.trend = prevAlt != null && Math.abs(ac.alt - prevAlt) >= 100 ? (ac.alt > prevAlt ? '▲' : '▼') : (ac.trend || '');
       if (!isNew) {
         ac.trail.push([ac.lat, ac.lon]);
@@ -1150,6 +1180,29 @@ class NavConsoleCard extends HTMLElement {
     this._initialSyncDone = true;
     this._contactsHtml = '';
     if (this._view === 'status') this._rightHtml = '';
+  }
+
+  // First highlight rule this flight matches, or null.
+  _matchRule(f, ac) {
+    if (!this._rules || !this._rules.length) return null;
+    const up = (v) => String(v || '').toUpperCase();
+    const norm = (v) => up(v).replace(/[^A-Z0-9]/g, '');
+    const callsign = up(field(f.callsign) || field(f.flight_number));
+    const airline = [field(f.airline), field(f.airline_short), field(f.airline_icao), field(f.airline_iata)].join(' ').toLowerCase();
+    const reg = norm(field(f.aircraft_registration));
+    const hex = up(field(f.aircraft_icao_24bit));
+    const code = up(field(f.aircraft_code));
+    for (const r of this._rules) {
+      const list = (v) => (Array.isArray(v) ? v : v != null ? [v] : []);
+      if (list(r.callsign_prefix).some((p) => p && callsign.startsWith(up(p)))) return r;
+      if (list(r.callsign).some((p) => p && callsign === up(p))) return r;
+      if (list(r.airline).some((p) => p && airline.includes(String(p).toLowerCase()))) return r;
+      if (list(r.registration).some((p) => p && reg === norm(p))) return r;
+      if (list(r.icao24_prefix).some((p) => p && hex.startsWith(up(p)))) return r;
+      if (list(r.aircraft_code).some((p) => p && code === up(p))) return r;
+      if (r.canadian_military_serial && /^\d{5,6}$/.test(reg) && /^C[0-3]/.test(hex)) return r;
+    }
+    return null;
   }
 
   // Dead-reckoned display position for an aircraft at time `now`.
@@ -1176,7 +1229,7 @@ class NavConsoleCard extends HTMLElement {
   _renderContacts() {
     if (this._view !== 'contacts') return;
     const r = this._config.radar;
-    const list = this._visibleAircraft().sort((a, b) => (b.emergency - a.emergency) || (!!a.lost - !!b.lost) || (a.dist - b.dist));
+    const list = this._visibleAircraft().sort((a, b) => (b.emergency - a.emergency) || (!!b.flag - !!a.flag) || (!!a.lost - !!b.lost) || (a.dist - b.dist));
     const sel = this._aircraft.get(this._selectedId);
     let html = `<div class="st" data-back role="button" tabindex="0"><span class="n"><span class="ic">${ICON.back}</span>Home status</span><span class="v">${list.filter((a) => !a.lost).length} in range</span></div>`;
     if (sel && r.show_photo && sel.photo) html += `<img class="photo" src="${esc(sel.photo)}" alt="${esc(sel.model || sel.callsign)}" referrerpolicy="no-referrer">`;
@@ -1187,7 +1240,7 @@ class NavConsoleCard extends HTMLElement {
       const route = ac.from || ac.to ? `${ac.from || '???'} > ${ac.to || '???'}` : '';
       const det = r.show_details ? [ac.airline, ac.model, ac.reg, route].filter(Boolean).join(' · ') : '';
       html += `<div class="ct ${ac.id === this._selectedId ? 'sel' : ''} ${low ? 'low' : ''} ${ac.emergency ? 'em' : ''}" data-id="${esc(ac.id)}" style="${ac.lost ? 'opacity:.5' : ''}">
-        <div class="a"><span class="cs">${ac.heli ? 'O ' : ''}${esc(ac.callsign)}${ac.emergency ? ` ${esc(ac.squawk)}` : ''}</span><span>${esc(this._altText(ac.alt))}${esc(ac.trend || '')}</span></div>
+        <div class="a"><span class="cs" ${ac.flag && !ac.emergency ? `style="color:${esc(ac.flag.color)}"` : ''}>${ac.heli ? 'O ' : ''}${esc(ac.callsign)}${ac.emergency ? ` ${esc(ac.squawk)}` : ''}${ac.flag ? `<span class="tag" style="color:${esc(ac.flag.color)}">${esc(ac.flag.label)}</span>` : ''}</span><span>${esc(this._altText(ac.alt))}${esc(ac.trend || '')}</span></div>
         <div class="a" style="color:var(--txt2)"><span>${esc(this._spdText(ac.kts))}</span><span>${esc(this._distText(ac.dist))}</span></div>
         ${det ? `<div class="b">${esc(det)}</div>` : ''}</div>`;
     }
@@ -1243,12 +1296,13 @@ class NavConsoleCard extends HTMLElement {
     const mode = this._config.radar.sound_alerts;
     if (!this._armed || mode === 'none') return;
     if (!force && mode !== 'all' && mode !== (kind === 'contact' ? 'new_contact' : kind)) return;
+    if (kind === 'highlight' && !['all', 'highlight'].includes(mode)) return;
     try {
       this._audio = this._audio || new (window.AudioContext || window.webkitAudioContext)();
       const ctx = this._audio;
       const o = ctx.createOscillator();
       const g = ctx.createGain();
-      const f0 = kind === 'emergency' ? 880 : kind === 'proximity' ? 1320 : 1180;
+      const f0 = kind === 'emergency' ? 880 : kind === 'proximity' ? 1320 : kind === 'highlight' ? 990 : 1180;
       o.type = 'sine';
       o.frequency.setValueAtTime(f0, ctx.currentTime);
       o.frequency.exponentialRampToValueAtTime(f0 / 2, ctx.currentTime + 0.7);
@@ -1328,7 +1382,7 @@ class NavConsoleCard extends HTMLElement {
       const inten = (ac.lost ? 0.4 : 1) * decay;
       const low = ac.alt < Number(r.low_altitude);
       const pulse = ac.emergency || (alertM && ac.dist < alertM) ? 0.55 + 0.45 * Math.sin(now / 180) : 1;
-      const color = ac.emergency ? c.red : low ? c.amb : c.acc;
+      const color = ac.emergency ? c.red : ac.flag ? ac.flag.color : low ? c.amb : c.acc;
 
       if (ac.trail.length) {
         ctx.save();
@@ -1358,8 +1412,35 @@ class NavConsoleCard extends HTMLElement {
       ctx.fillStyle = color;
       ctx.strokeStyle = c.txt;
       ctx.lineWidth = 0.8;
-      if (ac.heli) {
+      const icon = ac.flag && ac.flag.icon !== 'arrow' ? ac.flag.icon : ac.heli ? 'heli' : 'arrow';
+      if (icon !== 'arrow' && icon !== 'heli') {
+        // special icons don't show heading on their own, so add a heading tick
+        ctx.save();
+        ctx.rotate(toRad(ac.hdg));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, -13); ctx.stroke();
+        ctx.restore();
+      }
+      if (icon === 'heli') {
         ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else if (icon === 'star') {
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const rr = i % 2 ? 3 : 7.5;
+          const a = toRad(i * 36 - 90);
+          ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      } else if (icon === 'roundel') {
+        // RCAF roundel: blue ring, white ring, red centre
+        ctx.fillStyle = '#2f5fbf'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = ac.emergency ? c.red : '#e0303a'; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(0, 0, 7.6, 0, Math.PI * 2); ctx.stroke();
+      } else if (icon === 'diamond') {
+        ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(6, 0); ctx.lineTo(0, 7); ctx.lineTo(-6, 0); ctx.closePath();
+        ctx.fill(); ctx.stroke();
       } else {
         ctx.rotate(toRad(ac.hdg));
         ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(5, 6); ctx.lineTo(0, 3); ctx.lineTo(-5, 6); ctx.closePath();
@@ -1370,8 +1451,8 @@ class NavConsoleCard extends HTMLElement {
       ctx.save();
       ctx.globalAlpha = Math.min(1, inten * pulse);
       ctx.font = `${10 * k}px ${c.mono}`;
-      ctx.fillStyle = ac.emergency ? c.red : c.txt;
-      ctx.fillText(ac.callsign + (ac.emergency ? ` ${ac.squawk}` : ''), sx + 9 * k, sy - 2 * k);
+      ctx.fillStyle = ac.emergency ? c.red : ac.flag ? ac.flag.color : c.txt;
+      ctx.fillText(ac.callsign + (ac.emergency ? ` ${ac.squawk}` : ac.flag ? ` ${ac.flag.label}` : ''), sx + 9 * k, sy - 2 * k);
       ctx.font = `${9 * k}px ${c.mono}`;
       ctx.fillStyle = c.txt2;
       ctx.fillText(this._altText(ac.alt) + (ac.trend || ''), sx + 9 * k, sy + 9 * k);
@@ -1434,8 +1515,8 @@ class NavConsoleCard extends HTMLElement {
       const kmh = Math.round(ac.kts * 1.852);
       const spdTxt = r.speed_unit === 'kmh' ? `${kmh} km/h (${Math.round(ac.kts)} kt)` : `${Math.round(ac.kts)} kt (${kmh} km/h)`;
       const motion = `Heading <b>${compass(ac.hdg)}</b> · ${altTxt}${ac.trend === '▲' ? ' climbing' : ac.trend === '▼' ? ' descending' : ''} · ${spdTxt}`;
-      const tag = ac.emergency ? 'emergency' : ac.alt < Number(r.low_altitude) ? 'low flyer' : 'cruising';
-      const head = [ac.emergency ? 'EMERGENCY' : ac.lost ? 'SIGNAL LOST' : 'TRACKING', ac.callsign, ac.squawk ? `SQK ${ac.squawk}` : '']
+      const tag = ac.emergency ? 'emergency' : ac.flag ? (ac.flag.aurebesh || ac.flag.label.toLowerCase()) : ac.alt < Number(r.low_altitude) ? 'low flyer' : 'cruising';
+      const head = [ac.emergency ? 'EMERGENCY' : ac.lost ? 'SIGNAL LOST' : 'TRACKING', ac.callsign, ac.flag ? String(ac.flag.name || ac.flag.label).toUpperCase() : '', ac.squawk ? `SQK ${ac.squawk}` : '']
         .filter(Boolean).map(esc).join(' · ');
       html = `<div class="k"><span>${head}</span><span class="ab">${tag}</span></div><div class="l1">${esc(ac.model || ac.code || ac.callsign)}${ac.airline ? ` <span style="color:var(--txt2);font-size:12px">${esc(ac.airline)}</span>` : ''}</div>
         <div class="l2">${look}</div>${route ? `<div class="l2">${route}</div>` : ''}<div class="l2">${motion}</div>`;

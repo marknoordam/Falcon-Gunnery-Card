@@ -50,11 +50,13 @@ const planes=[
  {cs:'DAL882',fn:'DL882',icao:'A3D4E5',code:'A321',model:'Airbus A321-211',reg:'N350DN',al:'Delta Air Lines',o:'ATL',d:'SEA',alt:38000,kts:478,hdg:300,b:150,r:26000},
  {cs:'N412RX',fn:'',icao:'A4E5F6',code:'C208',model:'Cessna 208B Grand Caravan',reg:'N412RX',al:'',o:'APA',d:'BJC',alt:7200,kts:136,hdg:292,b:280,r:6000},
  {cs:'',fn:'',icao:'',code:'H145',model:'Airbus H145',reg:'BLOCKED',al:'',o:'',d:'',alt:1800,kts:120,hdg:40,b:220,r:12000},
+ {cs:'CWH13',fn:'',icao:'C0569A',code:'LANC',model:'Avro Lancaster B.X',reg:'C-GVRA',al:'',o:'YHM',d:'YHM',alt:2500,kts:150,hdg:80,b:200,r:8000},
+ {cs:'CFC4001',fn:'',icao:'C2B4F1',code:'C30J',model:'Lockheed Martin CC-130J Hercules',reg:'130612',al:'',o:'YTR',d:'YHM',alt:9000,kts:280,hdg:250,b:330,r:15000},
  {cs:'AAL19',fn:'AA19',icao:'A5F6A7',code:'B77W',model:'Boeing 777-323ER',reg:'N717AN',al:'American Airlines',o:'JFK',d:'LAX',alt:36000,kts:495,hdg:265,b:95,r:30000},
 ];
 planes.forEach(p=>{[p.lat,p.lon]=project(HOME.lat,HOME.lon,p.b,p.r);});
 let emergency=false, clear=false;
-const CITY={APA:'Centennial',BJC:'Broomfield',ORD:'Chicago',SFO:'San Francisco',DEN:'Denver',PHX:'Phoenix',ATL:'Atlanta',SEA:'Seattle',JFK:'New York',LAX:'Los Angeles'};
+const CITY={YHM:'Hamilton',YTR:'Trenton',APA:'Centennial',BJC:'Broomfield',ORD:'Chicago',SFO:'San Francisco',DEN:'Denver',PHX:'Phoenix',ATL:'Atlanta',SEA:'Seattle',JFK:'New York',LAX:'Los Angeles'};
 function flights(){ if(clear) return []; return planes.map(p=>({
   aircraft_icao_24bit:p.icao||'N/A', callsign:p.cs||'N/A', flight_number:p.fn||'N/A', aircraft_code:p.code, aircraft_model:p.model,
   aircraft_registration:p.reg, airline_short:p.al||'N/A', airport_origin_code_iata:p.o||'N/A', airport_destination_code_iata:p.d||'N/A', airport_origin_city:CITY[p.o]||'N/A', airport_destination_city:CITY[p.d]||'N/A',

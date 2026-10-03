@@ -142,12 +142,13 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `linger_time` | `45` | Seconds a lost contact stays (dimmed) before removal |
 | `low_altitude` | `10000` | Planes below this many feet are amber |
 | `alert_distance` | `0` | Pulse planes closer than this (in `distance_unit`); 0 = off |
-| `sound_alerts` | `none` | `none`, `new_contact`, `proximity`, `emergency` or `all`. When on, a speaker button appears on the scope; tap it once to allow sound |
+| `sound_alerts` | `none` | `none`, `new_contact`, `proximity`, `emergency`, `highlight` (special aircraft) or `all`. When on, a speaker button appears on the scope; tap it once to allow sound |
 | `stale_after` | `120` | Seconds without an update, while planes are showing, before a red STALE warning appears (0 = off) |
 | `speed_unit` | `kts` | `kts` or `kmh` |
 | `altitude_unit` | `ft` | `ft` or `m` |
 | `show_details` | `true` | Airline, model, registration and route in the flight list |
 | `show_photo` | `true` | Photo of the selected aircraft at the top of the flight list |
+| `highlights` | `[warplane, rcaf]` | Special aircraft to flag with their own color and icon (see below). `[]` turns flagging off |
 | `today_count` | none | The daily count sensor from [`examples/planes-today.yaml`](examples/planes-today.yaml). Shows the TODAY counter and the zone ring |
 | `today_radius_km` | `10` | Size of the zone ring, in km. Match the sensor's `radius_km` |
 
@@ -175,6 +176,41 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `status` | List of devices: plain entity names, or `{ entity, name, tap_action }` where `tap_action` is `toggle` or `more-info` |
 | `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They hide while the flight list is open |
 | `view` | Which side shows first: `status` or `contacts` |
+
+### Special aircraft
+
+Two groups are flagged out of the box, each with its own color and icon:
+
+| Preset | Shows as | Recognized by |
+|---|---|---|
+| `warplane` | Gold star, tag **CWH** | The Canadian Warplane Heritage Museum's ICAO code **CWH** ("WARPLANE HERITAGE"), and its aircraft registrations (C-GVRA Lancaster, C-GCWM Mitchell, C-GCWH Hurricane, CF-UUU Harvard, CF-DLC Fleet 21) |
+| `rcaf` | RCAF roundel, tag **RCAF** | The Canadian Forces ICAO code **CFC** ("CANFORCE"), an operator name like Royal Canadian Air Force, or a numbers-only military serial on a Canadian transponder |
+
+Flagged planes:
+- show a heading tick next to their icon
+- sort to the top of the flight list, after emergencies
+- show their group name in the tracking readout
+- can trigger a sonar ping (`sound_alerts: highlight` or `all`)
+
+Emergencies still turn them red.
+
+Add your own groups, or change a preset:
+
+```yaml
+radar:
+  highlights:
+    - warplane
+    - rcaf
+    - preset: warplane                 # extend a preset: add a registration you've spotted
+      registration: [C-GVRA, C-FBXL]
+    - name: Snowbirds
+      label: SNB
+      color: '#ff5fa2'
+      icon: diamond                    # arrow, star, roundel or diamond
+      callsign_prefix: [SNB]
+```
+
+Rules can match on `callsign_prefix`, `callsign`, `airline` (part of the operator name), `registration`, `aircraft_code` or `icao24_prefix`. A plane is flagged if it matches any of them. Registrations ignore dashes, so `CF-UUU` also matches `C-FUUU`.
 
 ### Sump pump and washer
 
