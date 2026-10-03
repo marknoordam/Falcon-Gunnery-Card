@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.9.2
+ * Falcon Gunnery Card (nav-console-card) v0.10.0
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.9.2';
+const VERSION = '0.10.0';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -215,9 +215,10 @@ ha-card { background: none; border: none; box-shadow: none; overflow: visible; -
 }
 .side { overflow: visible; }
 .lslots { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--acc) transparent; padding-right: 2px; }
-.rbody { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow: hidden; }
+.rbody { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; min-height: calc(130px * var(--nv-s, 1)); overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--acc) transparent; }
 .lslots, .rbody, .hdb, .ovl, .tab { zoom: var(--nv-s, 1); }
-.rcards { display: flex; flex-direction: column; gap: 8px; flex: none; max-height: 60%; overflow-y: auto; scrollbar-width: none; }
+.rcards { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--acc) transparent; }
+.rcards > * { width: 100%; flex: none; }
 .rcards:empty, .contacts .rcards { display: none; }
 .lights { display: flex; flex-direction: column; }
 .ap { border: 1.5px solid var(--acc); padding: 6px 7px; cursor: pointer; }
@@ -368,6 +369,7 @@ class NavConsoleCard extends HTMLElement {
     this._ro = new ResizeObserver(() => this._resize());
     this._ro.observe(this);
     if (this._roObs && this._el) this._roObs.observe(this._el.ro);
+    if (this._cardsObs && this._el) { this._cardsObs.observe(this._el.right); this._el.rcards.childNodes.forEach((n) => this._cardsObs.observe(n)); this._queueFit(); }
     this._startLoop();
     this._subscribeForecast();
   }
@@ -375,6 +377,7 @@ class NavConsoleCard extends HTMLElement {
   disconnectedCallback() {
     if (this._ro) this._ro.disconnect();
     if (this._roObs) this._roObs.disconnect();
+    if (this._cardsObs) this._cardsObs.disconnect();
     if (this._raf) cancelAnimationFrame(this._raf);
     this._raf = null;
     this._unsubscribeForecast();
@@ -491,6 +494,51 @@ class NavConsoleCard extends HTMLElement {
     };
     for (const cfg of list) {
       try { this._el.rcards.appendChild(make(cfg)); } catch (e) { /* invalid card config: HA shows its own error card */ }
+    }
+    // camera images load late and change height, so refit whenever anything resizes
+    this._cardsObs = new ResizeObserver(() => this._queueFit());
+    this._cardsObs.observe(this._el.right);
+    this._el.rcards.childNodes.forEach((n) => this._cardsObs.observe(n));
+    new MutationObserver(() => this._el.rcards.childNodes.forEach((n) => this._cardsObs.observe(n)))
+      .observe(this._el.rcards, { childList: true });
+    this._queueFit();
+  }
+
+  _queueFit() {
+    if (this._fitRaf) return;
+    this._fitRaf = requestAnimationFrame(() => { this._fitRaf = null; this._fitCards(); });
+  }
+
+  // Shrink the embedded cards (keeping their shape) so all of them fit under the security list.
+  _fitCards() {
+    const rc = this._el?.rcards;
+    if (!rc || !rc.children.length || this._view === 'contacts') return;
+    const pane = this._el.right.getBoundingClientRect();
+    const inner = pane.height - 25;                       // panel padding and border
+    const hdb = this._el.right.querySelector('.hdb').getBoundingClientRect().height;
+    const rb = this._el.rbody;
+    const zoom = rb.clientHeight ? rb.getBoundingClientRect().height / rb.clientHeight : 1;
+    // full height of the weather and security list, including rows scrolled out of view
+    const parts = [...rb.children];
+    const statusNeed = parts.reduce((sum, el) => sum + (el.classList.contains('list')
+      ? el.scrollHeight * zoom : el.getBoundingClientRect().height), 0) + 10 * zoom * Math.max(0, parts.length - 1);
+    // the security list gets the room it needs first; the cards always keep at least `cards_min_share` of the panel
+    const share = Math.min(0.85, Math.max(0.2, Number(this._config.right?.cards_min_share) || 0.35));
+    const avail = Math.max(inner - hdb - statusNeed - 24, inner * share);
+    rc.style.maxHeight = `${Math.floor(avail)}px`;
+    const kids = [...rc.children];
+    const full = rc.clientWidth;
+    const gaps = 8 * (kids.length - 1);
+    let ratio = 0;                                        // total height per pixel of width
+    for (const k of kids) {
+      const b = k.getBoundingClientRect();
+      if (!b.width || !b.height) return;                  // not rendered yet; the observer will retry
+      ratio += b.height / b.width;
+    }
+    const w = Math.max(full * 0.4, Math.min(full, (avail - gaps - 4) / ratio));
+    for (const k of kids) {
+      const cur = k.getBoundingClientRect().width;
+      if (Math.abs(cur - w) > 1) k.style.width = `${Math.floor(w)}px`;
     }
   }
 
@@ -1078,6 +1126,7 @@ class NavConsoleCard extends HTMLElement {
     this._el.rbody.querySelectorAll('[data-more]').forEach((el) => on(el, () => this._moreInfo(el.dataset.more)));
     this._el.rbody.querySelectorAll('[data-view]').forEach((el) => on(el, () => this._setView('contacts')));
     this._bindRows(this._el.rbody, items);
+    this._queueFit();
   }
 
   _iconsUpdate(root) {

@@ -175,7 +175,8 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `width` | Panel width, in pixels (default `250` × `scale`). Widen it for bigger camera views |
 | `weather` | Weather device: condition, temperature, and today's high and low |
 | `status` | List of devices: plain entity names, or `{ entity, name, tap_action }` where `tap_action` is `toggle` or `more-info` |
-| `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They hide while the flight list is open |
+| `cards` | A list of any Home Assistant cards (camera cards, picture-glance, your own custom cards) shown under the list. They shrink evenly, keeping their shape, so they all fit below the security list. They hide while the flight list is open |
+| `cards_min_share` | The smallest share of the panel the cards keep when the list is long, 0.2 to 0.85 (default `0.35`). Raise it for bigger cameras; the list then scrolls |
 | `view` | Which side shows first: `status` or `contacts` |
 
 ### Special aircraft

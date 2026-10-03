@@ -101,7 +101,7 @@ card.setConfig({
     washer:{entity:'binary_sensor.washer_running',remaining:'sensor.washer_completion_time',stage:'sensor.washer_job_state'},
     meter:[{name:'HVAC',entity:'sensor.hvac_power'},{name:'Kitchen',entity:'sensor.kitchen_power'},{name:'Office',entity:'sensor.office_power'},{name:'EV',entity:'sensor.ev_power'},{name:'Laundry',entity:'sensor.laundry_power'}]},
   right:{weather:'weather.home',status:['lock.front_door','alarm_control_panel.home','cover.garage_door'],
-    cards:[{type:'picture-entity',entity:'camera.front_door',show_state:false},{type:'picture-entity',entity:'camera.hangar_bay',show_state:false}]},
+    cards:[{type:'picture-entity',entity:'camera.front_door',show_state:false},{type:'picture-entity',entity:'camera.hangar_bay',show_state:false},{type:'picture-entity',entity:'camera.backyard',show_state:false}]},
 });
 document.getElementById('host').appendChild(card);
 function push(){ card.hass={...hass,states:{...states}}; }
