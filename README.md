@@ -81,7 +81,7 @@ The console can show how many different planes came within 10 km of your home to
      today_count: sensor.planes_within_10_km_today
    ```
 
-The radar then shows an amber **TODAY** counter under the aircraft count, and a dashed amber ring marks the 10 km zone. The Aircraft row reads, for example, "6 now · 42 today". To use a different distance, change `radius_km` in both places in the YAML file, and set `today_radius_km` on the card to match.
+The radar then shows an amber **TODAY** counter under the aircraft count (add `today_ring: true` for a dashed ring marking the zone). The Aircraft row reads, for example, "6 now · 42 today". To use a different distance, change `radius_km` in both places in the YAML file, and set `today_radius_km` on the card to match.
 
 ## Updating
 
@@ -150,7 +150,8 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `show_photo` | `true` | Photo of the selected aircraft at the top of the flight list |
 | `highlights` | `[warplane, rcaf]` | Special aircraft to flag with their own color and icon (see below). `[]` turns flagging off |
 | `today_count` | none | The daily count sensor from [`examples/planes-today.yaml`](examples/planes-today.yaml). Shows the TODAY counter and the zone ring |
-| `today_radius_km` | `10` | Size of the zone ring, in km. Match the sensor's `radius_km` |
+| `today_radius_km` | `10` | Counting distance shown on the TODAY counter, in km. Match the sensor's `radius_km` |
+| `today_ring` | `false` | `true` draws a dashed amber ring at the counting distance |
 
 ### `left:`
 | Option | What it shows |
