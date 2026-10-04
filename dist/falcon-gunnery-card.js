@@ -1,5 +1,5 @@
 /**
- * Falcon Gunnery Card (nav-console-card) v0.10.0
+ * Falcon Gunnery Card (nav-console-card) v0.10.1
  * https://github.com/marknoordam/Falcon-Gunnery-Card
  *
  * A Star Wars style "nav console" dashboard card for Home Assistant, made to match the
@@ -21,7 +21,7 @@
  * list and helicopter type patterns are adapted from that project.
  */
 
-const VERSION = '0.10.0';
+const VERSION = '0.10.1';
 
 const EMERGENCY_SQUAWKS = ['7700', '7600', '7500'];
 const HELI_CODE_RE = /^(EC\d|H1\d\d|B06|B407|B412|B429|B505|R22|R44|R66|S61|S64|S76|S92|UH1|A109|A119|A129|A139|A149|A169|A189|AS3\d|AS5\d|MI\d|KA\d)/;
@@ -70,6 +70,7 @@ const DEFAULTS = {
     sweep_period: 4,
     trail_length: 7,
     trail_style: 'line',
+    trail_width: 2.2,
     smooth_motion: true,
     linger_time: 45,
     low_altitude: 10000,
@@ -1436,15 +1437,17 @@ class NavConsoleCard extends HTMLElement {
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         const pts = [...ac.trail.map(([la, lo]) => this._toScreen(la, lo)), [sx, sy]];
+        const tw = Math.max(0.5, Number(r.trail_width) || 2.2) * k;
         if (r.trail_style === 'dots') {
           pts.slice(0, -1).forEach(([px, py], i) => {
             ctx.globalAlpha = 0.15 + 0.45 * (i / pts.length);
-            ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(px, py, Math.max(1.6, tw * 0.9), 0, Math.PI * 2); ctx.fill();
           });
         } else {
-          ctx.globalAlpha = 0.3 * inten;
-          ctx.lineWidth = 1.2;
-          ctx.setLineDash([4, 5]);
+          ctx.globalAlpha = 0.4 * inten;
+          ctx.lineWidth = tw;
+          ctx.lineCap = 'round';
+          ctx.setLineDash([4 * k, 5 * k]);
           ctx.beginPath();
           pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
           ctx.stroke();

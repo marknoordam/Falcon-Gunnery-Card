@@ -138,6 +138,7 @@ When a new version is published, it shows up in **Settings → Updates**. Click 
 | `sweep_period` | `4` | Seconds per revolution |
 | `trail_length` | `7` | Past positions kept per plane (0 = no trails) |
 | `trail_style` | `line` | `line` or `dots` |
+| `trail_width` | `2.2` | Thickness of the trails (the original was `1.2`) |
 | `smooth_motion` | `true` | Move planes between sensor updates |
 | `linger_time` | `45` | Seconds a lost contact stays (dimmed) before removal |
 | `low_altitude` | `10000` | Planes below this many feet are amber |
